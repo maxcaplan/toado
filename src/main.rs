@@ -68,12 +68,17 @@ fn main() {
     let app = match toado::Server::open(&format!("{app_dir}/database")) {
         Ok(app) => app,
         Err(e) => {
-            eprintln!("Failed to initialize application server: {e}");
+            eprintln!("Failed to create application server: {e}");
             process::exit(1)
         }
     };
 
-    // Execute command if provided
+    app.init().unwrap_or_else(|e| {
+        eprintln!("Failed to initialize application server: {e}");
+        process::exit(1)
+    });
+
+    // If command provided, execute and exit application
     if let Some(command) = args.command {
         if let Some(message) = handle_command(command, app).unwrap_or_else(|e| {
             eprintln!("Failed to execute application command: {e}");
@@ -82,7 +87,11 @@ fn main() {
             // If command returned a message, print to stdout
             println!("{message}")
         }
+
+        return;
     }
+
+    println!("toado");
 }
 
 /// Creates the directory for application files if one does not exist

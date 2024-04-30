@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     error,
     fmt::{self},
 };
@@ -33,7 +34,7 @@ impl Server {
 
         self.connection.execute_batch(
             "BEGIN;
-            PRAGMA foreign_keys = ON
+            PRAGMA foreign_keys = ON;
             CREATE TABLE IF NOT EXISTS tasks(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
@@ -63,7 +64,31 @@ impl Server {
 
     /// Add a new task to the database. Returns id of added task
     pub fn add_task(&self, args: AddTaskArgs) -> Result<i64, Error> {
-        Ok(0)
+        let mut map: HashMap<&str, String> = HashMap::from([
+            ("name", args.name),
+            ("priority", args.priority.to_string()),
+            ("status", u32::from(args.status).to_string()),
+            ("start_time", args.start_time),
+        ]);
+
+        if let Some(end_time) = args.end_time {
+            map.insert("end_time", end_time);
+        }
+
+        let (cols, vals): (Vec<&str>, Vec<String>) = map
+            .into_iter()
+            .map(|(key, val)| (key, format!("'{val}'"))) // Surrond values with single quotes (ex: 'val')
+            .unzip();
+
+        let sql_string = format!(
+            "INSERT INTO tasks({}) VALUES({})",
+            cols.join(", "),
+            vals.join(", ")
+        );
+
+        self.connection.execute(&sql_string, ())?;
+
+        Ok(self.connection.last_insert_rowid())
     }
 
     /// Delete tasks from the database by a query. Returns number of rows modified
@@ -71,7 +96,10 @@ impl Server {
     where
         T: fmt::Display,
     {
-        Ok(0)
+        let sql_string = format!("DELETE FROM tasks WHERE {};", String::from(query));
+        self.connection.execute(&sql_string, ())?;
+
+        Ok(self.connection.changes())
     }
 
     /// Select all tasks for a query
@@ -79,7 +107,23 @@ impl Server {
     where
         T: fmt::Display,
     {
-        Ok(vec![])
+        let sql_string = format!("SELECT * FROM tasks WHERE {};", String::from(query));
+        let mut statment = self.connection.prepare(&sql_string)?;
+
+        let rows = statment.query_map((), |row| {
+            let status: i64 = row.get(3)?;
+            Ok(Task {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                priority: row.get(2)?,
+                status: ItemStatus::from(status),
+                start_time: row.get(4)?,
+                end_time: row.get(5).ok(),
+                projects: None,
+            })
+        })?;
+
+        Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
     }
 }
 
