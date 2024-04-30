@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    /// Path to the todo database file
+    /// Path to the toado database file
     #[arg(short, long)]
     file: Option<String>,
     #[command(subcommand)]
@@ -58,21 +58,62 @@ struct ListArgs {
 }
 
 fn main() {
+    let args = Cli::parse();
+
     let app_dir = init_directory().unwrap_or_else(|e| {
         eprintln!("Failed to initialize application directory: {e}");
         process::exit(1)
     });
 
-    println!("{app_dir}")
+    let app = match toado::Server::open(&format!("{app_dir}/database")) {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("Failed to initialize application server: {e}");
+            process::exit(1)
+        }
+    };
+
+    // Execute command if provided
+    if let Some(command) = args.command {
+        if let Some(message) = handle_command(command, app).unwrap_or_else(|e| {
+            eprintln!("Failed to execute application command: {e}");
+            process::exit(1)
+        }) {
+            // If command returned a message, print to stdout
+            println!("{message}")
+        }
+    }
 }
 
 /// Creates the directory for application files if one does not exist
 fn init_directory() -> Result<String, toado::Error> {
     // Get user home directory
     let home_dir = env::var("HOME")?;
-    let app_dir = format!("{home_dir}/.local/share/todo_rs");
+    let app_dir = format!("{home_dir}/.local/share/toado");
 
     // Create application directory if it doesn't exist
     fs::create_dir_all(&app_dir)?;
     Ok(app_dir)
+}
+
+/// Handle application commands from the CLI
+fn handle_command(command: Commands, app: toado::Server) -> Result<Option<String>, toado::Error> {
+    let message = match command {
+        Commands::Add(args) => on_add(args, app)?,
+        Commands::Delete(args) => Some(format!("Delete task with name: {}", args.name)),
+        Commands::List(_args) => Some("List tasks".to_string()),
+    };
+
+    Ok(message)
+}
+
+fn on_add(args: AddArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
+    app.add_task(toado::AddTaskArgs {
+        name: args.name.unwrap_or("unset".to_string()),
+        priority: 0,
+        status: toado::ItemStatus::Incomplete,
+        start_time: "2024-05-05".to_string(),
+        end_time: None,
+    })
+    .map(|id| Some(format!("Created new task with id `{id}`")))
 }
