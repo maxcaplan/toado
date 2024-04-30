@@ -1,3 +1,5 @@
+use std::{env, fs, process};
+
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
@@ -56,5 +58,21 @@ struct ListArgs {
 }
 
 fn main() {
-    println!("Hello, world!");
+    let app_dir = init_directory().unwrap_or_else(|e| {
+        eprintln!("Failed to initialize application directory: {e}");
+        process::exit(1)
+    });
+
+    println!("{app_dir}")
+}
+
+/// Creates the directory for application files if one does not exist
+fn init_directory() -> Result<String, toado::Error> {
+    // Get user home directory
+    let home_dir = env::var("HOME")?;
+    let app_dir = format!("{home_dir}/.local/share/todo_rs");
+
+    // Create application directory if it doesn't exist
+    fs::create_dir_all(&app_dir)?;
+    Ok(app_dir)
 }
