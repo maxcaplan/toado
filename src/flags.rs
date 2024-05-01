@@ -18,19 +18,37 @@ pub enum Commands {
     /// Remove an item
     Delete(DeleteArgs),
     /// Display a list of items
-    List(ListArgs),
+    Ls(ListArgs),
 }
 
 #[derive(Args)]
 pub struct AddArgs {
-    /// Name of item to add
-    pub name: Option<String>,
     /// Add new task (default behaviour)
     #[arg(short, long)]
     pub task: bool,
     /// Add new project
     #[arg(short, long)]
     pub project: bool,
+    /// Name of item
+    pub name: Option<String>,
+    /// Priority of item
+    #[arg(short, long)]
+    pub item_priority: Option<u64>,
+    /// Start time of item
+    #[arg(short, long)]
+    pub start_time: Option<String>,
+    /// End time of item
+    #[arg(short, long)]
+    pub end_time: Option<String>,
+    /// Notes to add to item
+    #[arg(short, long)]
+    pub notes: Option<String>,
+    /// Repetition of item (Only applies to tasks)
+    #[arg(short, long)]
+    pub repeat: Option<String>,
+    /// Skip optional fields
+    #[arg(short, long)]
+    pub optional: bool,
 }
 
 #[derive(Args)]

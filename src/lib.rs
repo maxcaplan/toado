@@ -40,14 +40,17 @@ impl Server {
                 name TEXT NOT NULL,
                 priority INTEGER NOT NULL,
                 status INTEGER NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT
+                start_time TEXT,
+                end_time TEXT,
+                repeat TEXT,
+                notes TEXT
             );
             CREATE TABLE IF NOT EXISTS projects(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
                 start_time TEXT NOT NULL,
-                end_time TEXT
+                end_time TEXT,
+                notes TEXT
             );
             CREATE TABLE IF NOT EXISTS task_assignments(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -68,16 +71,27 @@ impl Server {
             ("name", args.name),
             ("priority", args.priority.to_string()),
             ("status", u32::from(args.status).to_string()),
-            ("start_time", args.start_time),
         ]);
+
+        if let Some(start_time) = args.start_time {
+            map.insert("start_time", start_time);
+        }
 
         if let Some(end_time) = args.end_time {
             map.insert("end_time", end_time);
         }
 
+        if let Some(repeat) = args.repeat {
+            map.insert("repeat", repeat);
+        }
+
+        if let Some(notes) = args.notes {
+            map.insert("repeate", notes);
+        }
+
         let (cols, vals): (Vec<&str>, Vec<String>) = map
             .into_iter()
-            .map(|(key, val)| (key, format!("'{val}'"))) // Surrond values with single quotes (ex: 'val')
+            .map(|(key, val)| (key, format!("'{}'", val.trim()))) // Surrond values with single quotes (ex: 'val')
             .unzip();
 
         let sql_string = format!(
@@ -117,8 +131,10 @@ impl Server {
                 name: row.get(1)?,
                 priority: row.get(2)?,
                 status: ItemStatus::from(status),
-                start_time: row.get(4)?,
+                start_time: row.get(4).ok(),
                 end_time: row.get(5).ok(),
+                repeat: row.get(6).ok(),
+                notes: row.get(7).ok(),
                 projects: None,
             })
         })?;
@@ -136,9 +152,13 @@ pub struct Task {
     /// Completion status of task
     pub status: ItemStatus,
     /// Start time of the task in ISO 8601 format
-    pub start_time: String,
+    pub start_time: Option<String>,
     /// End time of the task in ISO 8601 format
     pub end_time: Option<String>,
+    /// Determins whether and how the task repeats
+    pub repeat: Option<String>,
+    /// Notes for the task
+    pub notes: Option<String>,
     /// List of projects the task is associate with
     pub projects: Option<Vec<String>>,
 }
@@ -152,9 +172,13 @@ pub struct AddTaskArgs {
     /// Completion status of task
     pub status: ItemStatus,
     /// Start time of the task in ISO 8601 format
-    pub start_time: String,
+    pub start_time: Option<String>,
     /// End time of the task in ISO 8601 format
     pub end_time: Option<String>,
+    /// Determins whether and how the task repeats
+    pub repeat: Option<String>,
+    /// Notes for the task
+    pub notes: Option<String>,
 }
 
 /// Status of an item (ie. task or project)
