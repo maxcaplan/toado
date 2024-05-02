@@ -1,8 +1,10 @@
 use clap::Parser;
+use formatting::format_task_list;
 use std::{env, fs, process};
 
 mod commands;
 mod flags;
+mod formatting;
 
 /// "The ships hung in the sky in much the same way that bricks don't."
 fn main() {
@@ -112,13 +114,7 @@ fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>
 fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
         let tasks = commands::list_tasks(args, app)?;
-        Ok(Some(
-            tasks
-                .into_iter()
-                .map(|task| format!("{} | {} {}", task.id, task.name, task.status))
-                .collect::<Vec<String>>()
-                .join("\n"),
-        ))
+        Ok(Some(format_task_list(tasks)))
     } else {
         Err(Into::into("task listing not implemented"))
     }
