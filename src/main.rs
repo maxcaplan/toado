@@ -86,7 +86,7 @@ fn handle_command(
     let message = match command {
         flags::Commands::Add(args) => handle_add(args, app)?,
         flags::Commands::Delete(_args) => return Err(Into::into("deletion is not implemented")),
-        flags::Commands::Ls(_args) => return Err(Into::into("listing is not implemented")),
+        flags::Commands::Ls(args) => handle_ls(args, app)?,
     };
 
     Ok(message)
@@ -95,12 +95,31 @@ fn handle_command(
 /// Handle the add command
 ///
 /// # Errors
-/// Will Return an error if the task or poject creation fails
+/// Will return an error if the task or poject creation fails
 fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
         let (task_id, task_name) = commands::create_task(args, app)?;
         Ok(Some(format!("Created task {task_name} with id {task_id}")))
     } else {
         Err(Into::into("project adding not implemented"))
+    }
+}
+
+/// Handle the list command
+///
+/// # Errors
+/// Will return an error if the task or project selection fails
+fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
+    if args.task || !args.project {
+        let tasks = commands::list_tasks(args, app)?;
+        Ok(Some(
+            tasks
+                .into_iter()
+                .map(|task| format!("{} | {} {}", task.id, task.name, task.status))
+                .collect::<Vec<String>>()
+                .join("\n"),
+        ))
+    } else {
+        Err(Into::into("task listing not implemented"))
     }
 }

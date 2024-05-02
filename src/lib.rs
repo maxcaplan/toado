@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     error,
-    fmt::{self},
+    fmt::{self, Display},
 };
 
 pub struct Server {
@@ -116,13 +116,44 @@ impl Server {
         Ok(self.connection.changes())
     }
 
-    /// Select all tasks for a query
-    pub fn select_tasks<T, E>(&self, query: QueryConditions<T>) -> Result<Vec<Task>, Error>
+    /// Select all tasks
+    pub fn select_tasks(&self) -> Result<Vec<Task>, Error> {
+        let sql_string = "SELECT * FROM tasks;".to_string();
+        self.execute_select_tasks(sql_string)
+    }
+
+    /// Select all tasks for one or more given condition
+    pub fn select_tasks_condition<T, E>(
+        &self,
+        conditions: Vec<(QueryConditions<T>, Option<QueryOperators>)>,
+    ) -> Result<Vec<Task>, Error>
     where
         T: fmt::Display,
     {
-        let sql_string = format!("SELECT * FROM tasks WHERE {};", String::from(query));
-        let mut statment = self.connection.prepare(&sql_string)?;
+        let mut sql_string = String::from("SELECT * FROM tasks WHERE ");
+
+        let conditions = conditions
+            .into_iter()
+            .map(|(condition, operator)| {
+                // Map conditions to string representations
+                let mut condition_string = String::from(condition);
+                if let Some(operator) = operator {
+                    // If an operator is supplied, append to condition string
+                    condition_string.push_str(&format!(" {}", String::from(operator)));
+                };
+
+                condition_string
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        sql_string.push_str(&format!("{conditions};"));
+
+        self.execute_select_tasks(sql_string)
+    }
+
+    fn execute_select_tasks(&self, query: String) -> Result<Vec<Task>, Error> {
+        let mut statment = self.connection.prepare(&query)?;
 
         let rows = statment.query_map((), |row| {
             let status: i64 = row.get(3)?;
@@ -188,6 +219,20 @@ pub enum ItemStatus {
     Archived,
 }
 
+impl Display for ItemStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Incomplete => "incomplete",
+                Self::Complete => "complete",
+                Self::Archived => "archived",
+            }
+        )
+    }
+}
+
 // Implements u32 conversion for ItemStatus
 impl From<ItemStatus> for u32 {
     fn from(value: ItemStatus) -> Self {
@@ -199,6 +244,7 @@ impl From<ItemStatus> for u32 {
     }
 }
 
+// Implements Item status conversion for i64
 impl From<i64> for ItemStatus {
     fn from(value: i64) -> Self {
         match value {
@@ -251,6 +297,22 @@ where
                     .collect::<Vec<String>>()
                     .join(", ") // Convert vector of values into string of format "a, b, c"
             ),
+        }
+    }
+}
+
+/// Database statment conditional boolean logical operators
+pub enum QueryOperators {
+    And,
+    Or,
+}
+
+// Implements String conversion for QueryOperators
+impl From<QueryOperators> for String {
+    fn from(value: QueryOperators) -> Self {
+        match value {
+            QueryOperators::And => "AND".to_string(),
+            QueryOperators::Or => "OR".to_string(),
         }
     }
 }

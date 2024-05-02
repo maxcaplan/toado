@@ -1,5 +1,11 @@
 use crate::flags;
 
+/// Creates a new task in a toado server with provided arguments. Prompts the user to input any task
+/// information not provided in the arguments.
+///
+/// # Errors
+/// Will return an error if any of the user input prompts fail, or if the creation of the task
+/// fails.
 pub fn create_task(
     args: flags::AddArgs,
     app: toado::Server,
@@ -60,6 +66,13 @@ pub fn create_task(
     })?;
 
     Ok((task_id, name))
+}
+
+pub fn list_tasks(
+    _args: flags::ListArgs,
+    app: toado::Server,
+) -> Result<Vec<toado::Task>, toado::Error> {
+    app.select_tasks()
 }
 
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an
