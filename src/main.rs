@@ -113,8 +113,8 @@ fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>
 /// Will return an error if the task or project selection fails
 fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
-        let tasks = commands::list_tasks(args, app)?;
-        Ok(Some(format_task_list(tasks)))
+        let tasks = commands::list_tasks(&args, app)?;
+        Ok(Some(format_task_list(tasks, args.verbose)))
     } else {
         Err(Into::into("task listing not implemented"))
     }

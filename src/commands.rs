@@ -69,7 +69,7 @@ pub fn create_task(
 }
 
 pub fn list_tasks(
-    _args: flags::ListArgs,
+    _args: &flags::ListArgs,
     app: toado::Server,
 ) -> Result<Vec<toado::Task>, toado::Error> {
     app.select_tasks()

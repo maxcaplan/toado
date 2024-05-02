@@ -71,4 +71,7 @@ pub struct ListArgs {
     /// List projects
     #[arg(short, long)]
     pub project: bool,
+    /// Display all item information
+    #[arg(short, long)]
+    pub verbose: bool,
 }
