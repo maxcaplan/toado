@@ -32,10 +32,10 @@ impl Server {
     pub fn init(&self) -> Result<(), Error> {
         self.connection.execute("PRAGMA foreign_keys = ON", ())?;
 
-        self.connection.execute_batch(
+        self.connection.execute_batch(&format!(
             "BEGIN;
             PRAGMA foreign_keys = ON;
-            CREATE TABLE IF NOT EXISTS tasks(
+            CREATE TABLE IF NOT EXISTS {}(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
                 priority INTEGER NOT NULL,
@@ -45,14 +45,14 @@ impl Server {
                 repeat TEXT,
                 notes TEXT
             );
-            CREATE TABLE IF NOT EXISTS projects(
+            CREATE TABLE IF NOT EXISTS {}(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 notes TEXT
             );
-            CREATE TABLE IF NOT EXISTS task_assignments(
+            CREATE TABLE IF NOT EXISTS {}(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 task_id INTEGER NOT NULL,
                 project_id INTEGER NOT NULL,
@@ -60,7 +60,10 @@ impl Server {
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
             COMMIT;",
-        )?;
+            Tables::Tasks,
+            Tables::Projects,
+            Tables::TaskAssignments
+        ))?;
 
         Ok(())
     }
@@ -110,62 +113,63 @@ impl Server {
     where
         T: fmt::Display,
     {
-        let sql_string = format!("DELETE FROM tasks WHERE {};", String::from(query));
+        let sql_string = format!("DELETE FROM tasks WHERE {};", query);
         self.connection.execute(&sql_string, ())?;
 
         Ok(self.connection.changes())
     }
 
     /// Select all tasks
-    pub fn select_tasks(&self) -> Result<Vec<Task>, Error> {
-        let sql_string = "SELECT * FROM tasks;".to_string();
-        self.execute_select_tasks(sql_string)
+    pub fn select_tasks(
+        &self,
+        cols: SelectCols,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
+    ) -> Result<Vec<Task>, Error> {
+        // `String` generic specified as it can't be infered when `conditions` is `None` :/
+        self.execute_select_tasks::<String>(SelectTasksQuery::new(cols, None, order_by, order_dir))
     }
 
     /// Select all tasks for one or more given condition
-    pub fn select_tasks_condition<T, E>(
+    pub fn select_tasks_condition<T>(
         &self,
+        cols: SelectCols,
         conditions: Vec<(QueryConditions<T>, Option<QueryOperators>)>,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
     ) -> Result<Vec<Task>, Error>
     where
         T: fmt::Display,
     {
-        let mut sql_string = String::from("SELECT * FROM tasks WHERE ");
-
-        let conditions = conditions
-            .into_iter()
-            .map(|(condition, operator)| {
-                // Map conditions to string representations
-                let mut condition_string = String::from(condition);
-                if let Some(operator) = operator {
-                    // If an operator is supplied, append to condition string
-                    condition_string.push_str(&format!(" {}", String::from(operator)));
-                };
-
-                condition_string
-            })
-            .collect::<Vec<String>>()
-            .join(" ");
-
-        sql_string.push_str(&format!("{conditions};"));
-
-        self.execute_select_tasks(sql_string)
+        self.execute_select_tasks(SelectTasksQuery::new(
+            cols,
+            Some(conditions),
+            order_by,
+            order_dir,
+        ))
     }
 
-    fn execute_select_tasks(&self, query: String) -> Result<Vec<Task>, Error> {
-        let mut statment = self.connection.prepare(&query)?;
+    /// Executes a select query for tasks
+    fn execute_select_tasks<T>(&self, query: SelectTasksQuery<T>) -> Result<Vec<Task>, Error>
+    where
+        T: fmt::Display,
+    {
+        let mut statment = self.connection.prepare(&query.to_string())?;
 
         let rows = statment.query_map((), |row| {
-            let status: i64 = row.get(3)?;
+            let status = match row.get::<&str, i64>("status") {
+                Ok(value) => Some(ItemStatus::from(value)),
+                Err(_) => None,
+            };
             Ok(Task {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                priority: row.get(2)?,
-                status: ItemStatus::from(status),
-                start_time: row.get(4).ok(),
-                end_time: row.get(5).ok(),
-                repeat: row.get(6).ok(),
-                notes: row.get(7).ok(),
+                id: row.get("id").ok(),
+                name: row.get("name").ok(),
+                priority: row.get("priority").ok(),
+                status,
+                start_time: row.get("start_time").ok(),
+                end_time: row.get("end_time").ok(),
+                repeat: row.get("repeat").ok(),
+                notes: row.get("notes").ok(),
                 projects: None,
             })
         })?;
@@ -174,14 +178,243 @@ impl Server {
     }
 }
 
+/// Task select query struct
+struct SelectTasksQuery<'a, T: Display> {
+    cols: SelectCols<'a>,
+    conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
+    order_by: Option<OrderBy>,
+    order_dir: Option<OrderDir>,
+}
+
+impl<'a, T: Display> SelectTasksQuery<'a, T> {
+    fn new(
+        cols: SelectCols<'a>,
+        conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
+    ) -> SelectTasksQuery<'a, T> {
+        SelectTasksQuery {
+            cols,
+            conditions,
+            order_by,
+            order_dir,
+        }
+    }
+}
+
+impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut query_string = format!("SELECT {} FROM {}", self.cols, Tables::Tasks);
+
+        if let Some(conditions) = &self.conditions {
+            // If select condtions provided, add to query string
+            query_string.push_str(
+                &conditions
+                    .iter()
+                    .map(|(condition, operator)| {
+                        // Map conditions to string representations
+                        let mut condition_string = condition.to_string();
+                        if let Some(operator) = operator {
+                            // If an operator is supplied, append to condition string
+                            condition_string.push_str(&format!(" {}", operator));
+                        };
+
+                        condition_string
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" "),
+            );
+        }
+
+        // Default order by priority
+        let order_by = self.order_by.unwrap_or(OrderBy::Priority);
+
+        query_string.push_str(&format!(
+            " ORDER BY {} {}",
+            order_by,
+            match self.order_dir {
+                // Set order direction if provided, else use defaults
+                Some(dir) => dir,
+                None => match order_by {
+                    OrderBy::Priority => OrderDir::Desc,
+                    _ => OrderDir::Asc,
+                },
+            }
+        ));
+
+        write!(f, "{query_string};")
+    }
+}
+
+/// Toado database tables
+enum Tables {
+    /// "tasks"
+    Tasks,
+    /// "projects"
+    Projects,
+    /// "task_assignments"
+    TaskAssignments,
+}
+
+impl fmt::Display for Tables {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Tasks => "tasks",
+                Self::Projects => "projects",
+                Self::TaskAssignments => "task_assignments",
+            }
+        )
+    }
+}
+
+/// What columns to return from a select statment.
+pub enum SelectCols<'a> {
+    All,
+    Some(Vec<&'a str>),
+}
+
+impl fmt::Display for SelectCols<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::All => "*".to_string(),
+                Self::Some(cols) => cols.join(", "),
+            }
+        )
+    }
+}
+
+/// Database statment conditions
+pub enum QueryConditions<'a, T>
+where
+    T: fmt::Display,
+{
+    Equal { col: &'a str, value: T },
+    NotEqual { col: &'a str, value: T },
+    GreaterThan { col: &'a str, value: T },
+    LessThan { col: &'a str, value: T },
+    GreaterThanOrEqual { col: &'a str, value: T },
+    LessThanOrEqual { col: &'a str, value: T },
+    Between { col: &'a str, values: (T, T) },
+    Like { col: &'a str, value: T },
+    In { col: &'a str, values: Vec<T> },
+}
+
+// Implements String conversion for QueryConditions
+impl<'a, T> Display for QueryConditions<'a, T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                QueryConditions::Equal { col, value } => format!("{col} = {value}"),
+                QueryConditions::NotEqual { col, value } => format!("{col} != {value}"),
+                QueryConditions::GreaterThan { col, value } => format!("{col} > {value}"),
+                QueryConditions::LessThan { col, value } => format!("{col} < {value}"),
+                QueryConditions::GreaterThanOrEqual { col, value } => format!("{col} >= {value}"),
+                QueryConditions::LessThanOrEqual { col, value } => format!("{col} <= {value}"),
+                QueryConditions::Between { col, values } => {
+                    format!("{col} BETWEEN {} AND {}", values.0, values.1)
+                }
+                QueryConditions::Like { col, value } => format!("{col} LIKE {value}"),
+                QueryConditions::In { col, values } => format!(
+                    "{col} IN ({})",
+                    values
+                        .iter()
+                        .map(|item| item.to_string())
+                        .collect::<Vec<String>>()
+                        .join(", ") // Convert vector of values into string of format "a, b, c"
+                ),
+            }
+        )
+    }
+}
+
+/// Database statment conditional boolean logical operators
+pub enum QueryOperators {
+    And,
+    Or,
+}
+
+// Implements String conversion for QueryOperators
+impl fmt::Display for QueryOperators {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                QueryOperators::And => "AND",
+                QueryOperators::Or => "OR",
+            }
+        )
+    }
+}
+
+/// Table column to order selection by
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum OrderBy {
+    Id,
+    Name,
+    Priority,
+    StartDate,
+    EndDate,
+}
+
+impl fmt::Display for OrderBy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Id => "id",
+                Self::Name => "name",
+                Self::Priority => "priority",
+                Self::StartDate => "start_date",
+                Self::EndDate => "end_date",
+            }
+        )
+    }
+}
+
+/// Direction of selection order.
+/// Asc: smallest value to largest
+/// Desc: Largest value to smallest
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum OrderDir {
+    Asc,
+    Desc,
+}
+
+impl fmt::Display for OrderDir {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Asc => "ASC",
+                Self::Desc => "DESC",
+            }
+        )
+    }
+}
+
+// Task row data
 pub struct Task {
-    pub id: i64,
+    pub id: Option<i64>,
     /// Name of the task
-    pub name: String,
+    pub name: Option<String>,
     /// Priority value for task, higher is more important
-    pub priority: u64,
+    pub priority: Option<u64>,
     /// Completion status of task
-    pub status: ItemStatus,
+    pub status: Option<ItemStatus>,
     /// Start time of the task in ISO 8601 format
     pub start_time: Option<String>,
     /// End time of the task in ISO 8601 format
@@ -219,7 +452,7 @@ pub enum ItemStatus {
     Archived,
 }
 
-impl Display for ItemStatus {
+impl fmt::Display for ItemStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -252,67 +485,6 @@ impl From<i64> for ItemStatus {
             1 => ItemStatus::Complete,
             3 => ItemStatus::Archived,
             _ => ItemStatus::Archived,
-        }
-    }
-}
-
-/// Database statment conditions
-pub enum QueryConditions<'a, T>
-where
-    T: fmt::Display,
-{
-    Equal { col: &'a str, value: T },
-    NotEqual { col: &'a str, value: T },
-    GreaterThan { col: &'a str, value: T },
-    LessThan { col: &'a str, value: T },
-    GreaterThanOrEqual { col: &'a str, value: T },
-    LessThanOrEqual { col: &'a str, value: T },
-    Between { col: &'a str, values: (T, T) },
-    Like { col: &'a str, value: T },
-    In { col: &'a str, values: Vec<T> },
-}
-
-// Implements String conversion for QueryConditions
-impl<'a, T> From<QueryConditions<'a, T>> for String
-where
-    T: fmt::Display,
-{
-    fn from(value: QueryConditions<T>) -> Self {
-        match value {
-            QueryConditions::Equal { col, value } => format!("{col} = {value}"),
-            QueryConditions::NotEqual { col, value } => format!("{col} != {value}"),
-            QueryConditions::GreaterThan { col, value } => format!("{col} > {value}"),
-            QueryConditions::LessThan { col, value } => format!("{col} < {value}"),
-            QueryConditions::GreaterThanOrEqual { col, value } => format!("{col} >= {value}"),
-            QueryConditions::LessThanOrEqual { col, value } => format!("{col} <= {value}"),
-            QueryConditions::Between { col, values } => {
-                format!("{col} BETWEEN {} AND {}", values.0, values.1)
-            }
-            QueryConditions::Like { col, value } => format!("{col} LIKE {value}"),
-            QueryConditions::In { col, values } => format!(
-                "{col} IN ({})",
-                values
-                    .into_iter()
-                    .map(|item| item.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ") // Convert vector of values into string of format "a, b, c"
-            ),
-        }
-    }
-}
-
-/// Database statment conditional boolean logical operators
-pub enum QueryOperators {
-    And,
-    Or,
-}
-
-// Implements String conversion for QueryOperators
-impl From<QueryOperators> for String {
-    fn from(value: QueryOperators) -> Self {
-        match value {
-            QueryOperators::And => "AND".to_string(),
-            QueryOperators::Or => "OR".to_string(),
         }
     }
 }

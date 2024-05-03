@@ -1,4 +1,4 @@
-use crate::flags;
+use crate::{flags, formatting};
 
 /// Creates a new task in a toado server with provided arguments. Prompts the user to input any task
 /// information not provided in the arguments.
@@ -69,10 +69,22 @@ pub fn create_task(
 }
 
 pub fn list_tasks(
-    _args: &flags::ListArgs,
+    args: &flags::ListArgs,
     app: toado::Server,
-) -> Result<Vec<toado::Task>, toado::Error> {
-    app.select_tasks()
+) -> Result<Option<String>, toado::Error> {
+    let order_dir = match (args.asc, args.desc) {
+        (true, _) => Some(toado::OrderDir::Asc),
+        (false, true) => Some(toado::OrderDir::Desc),
+        (false, false) => None,
+    };
+    let cols = if args.verbose {
+        toado::SelectCols::All
+    } else {
+        toado::SelectCols::Some(Vec::from(["id", "name", "priority", "status"]))
+    };
+
+    let tasks = app.select_tasks(cols, args.order_by, order_dir)?;
+    Ok(Some(formatting::format_task_list(tasks, args.verbose)))
 }
 
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an

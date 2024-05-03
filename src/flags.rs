@@ -65,13 +65,21 @@ pub struct DeleteArgs {
 
 #[derive(Args)]
 pub struct ListArgs {
+    /// List item order
+    pub order_by: Option<toado::OrderBy>,
     /// List tasks (default behaviour)
     #[arg(short, long)]
     pub task: bool,
     /// List projects
     #[arg(short, long)]
     pub project: bool,
-    /// Display all item information
+    /// List all item information
     #[arg(short, long)]
     pub verbose: bool,
+    /// List in ascending order
+    #[arg(short, long)]
+    pub asc: bool,
+    /// List in descending order
+    #[arg(short, long)]
+    pub desc: bool,
 }
