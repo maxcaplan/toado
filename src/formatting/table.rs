@@ -59,7 +59,7 @@ where
                         format!("{val}{}", " ".repeat(len_dif + 1)) // Add padding to value string
                     })
                     .collect::<Vec<String>>()
-                    .join("| ") // Join columns of strings into single string
+                    .join("│ ") // Join columns of strings into single string
             })
             .collect::<Vec<String>>()
             .join("\n"); // Join rows of strings into single string
