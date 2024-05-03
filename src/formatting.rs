@@ -28,5 +28,5 @@ pub fn format_task_list(tasks: Vec<toado::Task>, verbose: bool) -> String {
             .collect::<Vec<Vec<String>>>(),
     );
 
-    table.to_string()
+    table.seperate_cols(true).seperate_rows(false).to_string()
 }

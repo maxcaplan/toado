@@ -80,6 +80,11 @@ pub fn create_task(
     Ok((task_id, name))
 }
 
+/// Gets a list of tasks from a toado server
+///
+/// # Errors
+///
+/// Will return an error if selecting tasks from the server database fails
 pub fn list_tasks(
     args: &flags::ListArgs,
     app: toado::Server,
