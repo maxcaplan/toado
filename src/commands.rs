@@ -1,4 +1,5 @@
 use crate::{flags, formatting};
+use regex::Regex;
 
 /// Creates a new task in a toado server with provided arguments. Prompts the user to input any task
 /// information not provided in the arguments.
@@ -14,12 +15,23 @@ pub fn create_task(
 
     let name = option_or_input(
         args.name,
-        dialoguer::Input::with_theme(&theme).with_prompt("Name"),
+        dialoguer::Input::with_theme(&theme)
+            .with_prompt("Name")
+            .validate_with(|input: &String| {
+                let r = Regex::new(r"(^[0-9]+$|^\d)").expect("Regex creation should not fail");
+                if r.is_match(input) {
+                    Err("Name cannot start or be a number")
+                } else {
+                    Ok(())
+                }
+            }),
     )?;
 
     let priority = option_or_input(
         args.item_priority,
-        dialoguer::Input::with_theme(&theme).with_prompt("Priority"),
+        dialoguer::Input::with_theme(&theme)
+            .with_prompt("Priority")
+            .default(0),
     )?;
 
     let start_time = if args.optional {

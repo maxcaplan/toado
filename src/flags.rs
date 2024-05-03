@@ -82,4 +82,13 @@ pub struct ListArgs {
     /// List in descending order
     #[arg(short, long)]
     pub desc: bool,
+    /// Limit the number of items listed
+    #[arg(short, long)]
+    pub limit: Option<usize>,
+    /// Offset start of list
+    #[arg(short, long)]
+    pub offset: Option<usize>,
+    /// List all items
+    #[arg(short, long)]
+    pub full: bool,
 }
