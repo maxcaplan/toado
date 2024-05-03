@@ -83,7 +83,13 @@ pub fn list_tasks(
         toado::SelectCols::Some(Vec::from(["id", "name", "priority", "status"]))
     };
 
-    let tasks = app.select_tasks(cols, args.order_by, order_dir)?;
+    let limit = match (args.full, args.limit) {
+        (true, _) => Some(toado::SelectLimit::All), // Select all
+        (false, Some(val)) => Some(toado::SelectLimit::Limit(val)), // Select set number
+        _ => None,                                  // Select default number
+    };
+
+    let tasks = app.select_tasks(cols, args.order_by, order_dir, limit, None)?;
     Ok(Some(formatting::format_task_list(tasks, args.verbose)))
 }
 

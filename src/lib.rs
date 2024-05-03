@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     error,
     fmt::{self, Display},
+    usize,
 };
 
 pub struct Server {
@@ -125,9 +126,13 @@ impl Server {
         cols: SelectCols,
         order_by: Option<OrderBy>,
         order_dir: Option<OrderDir>,
+        limit: Option<SelectLimit>,
+        offset: Option<usize>,
     ) -> Result<Vec<Task>, Error> {
         // `String` generic specified as it can't be infered when `conditions` is `None` :/
-        self.execute_select_tasks::<String>(SelectTasksQuery::new(cols, None, order_by, order_dir))
+        self.execute_select_tasks::<String>(SelectTasksQuery::new(
+            cols, None, order_by, order_dir, limit, offset,
+        ))
     }
 
     /// Select all tasks for one or more given condition
@@ -137,6 +142,8 @@ impl Server {
         conditions: Vec<(QueryConditions<T>, Option<QueryOperators>)>,
         order_by: Option<OrderBy>,
         order_dir: Option<OrderDir>,
+        limit: Option<SelectLimit>,
+        offset: Option<usize>,
     ) -> Result<Vec<Task>, Error>
     where
         T: fmt::Display,
@@ -146,6 +153,8 @@ impl Server {
             Some(conditions),
             order_by,
             order_dir,
+            limit,
+            offset,
         ))
     }
 
@@ -175,74 +184,6 @@ impl Server {
         })?;
 
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
-    }
-}
-
-/// Task select query struct
-struct SelectTasksQuery<'a, T: Display> {
-    cols: SelectCols<'a>,
-    conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
-    order_by: Option<OrderBy>,
-    order_dir: Option<OrderDir>,
-}
-
-impl<'a, T: Display> SelectTasksQuery<'a, T> {
-    fn new(
-        cols: SelectCols<'a>,
-        conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
-        order_by: Option<OrderBy>,
-        order_dir: Option<OrderDir>,
-    ) -> SelectTasksQuery<'a, T> {
-        SelectTasksQuery {
-            cols,
-            conditions,
-            order_by,
-            order_dir,
-        }
-    }
-}
-
-impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut query_string = format!("SELECT {} FROM {}", self.cols, Tables::Tasks);
-
-        if let Some(conditions) = &self.conditions {
-            // If select condtions provided, add to query string
-            query_string.push_str(
-                &conditions
-                    .iter()
-                    .map(|(condition, operator)| {
-                        // Map conditions to string representations
-                        let mut condition_string = condition.to_string();
-                        if let Some(operator) = operator {
-                            // If an operator is supplied, append to condition string
-                            condition_string.push_str(&format!(" {}", operator));
-                        };
-
-                        condition_string
-                    })
-                    .collect::<Vec<String>>()
-                    .join(" "),
-            );
-        }
-
-        // Default order by priority
-        let order_by = self.order_by.unwrap_or(OrderBy::Priority);
-
-        query_string.push_str(&format!(
-            " ORDER BY {} {}",
-            order_by,
-            match self.order_dir {
-                // Set order direction if provided, else use defaults
-                Some(dir) => dir,
-                None => match order_by {
-                    OrderBy::Priority => OrderDir::Desc,
-                    _ => OrderDir::Asc,
-                },
-            }
-        ));
-
-        write!(f, "{query_string};")
     }
 }
 
@@ -364,8 +305,9 @@ pub enum OrderBy {
     Id,
     Name,
     Priority,
-    StartDate,
-    EndDate,
+    // TODO: These options cause an sql error
+    // StartDate,
+    // EndDate,
 }
 
 impl fmt::Display for OrderBy {
@@ -377,8 +319,8 @@ impl fmt::Display for OrderBy {
                 Self::Id => "id",
                 Self::Name => "name",
                 Self::Priority => "priority",
-                Self::StartDate => "start_date",
-                Self::EndDate => "end_date",
+                // Self::StartDate => "start_date",
+                // Self::EndDate => "end_date",
             }
         )
     }
@@ -403,6 +345,91 @@ impl fmt::Display for OrderDir {
                 Self::Desc => "DESC",
             }
         )
+    }
+}
+
+pub enum SelectLimit {
+    Limit(usize),
+    All,
+}
+
+/// Task select query struct
+struct SelectTasksQuery<'a, T: Display> {
+    cols: SelectCols<'a>,
+    conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
+    order_by: Option<OrderBy>,
+    order_dir: Option<OrderDir>,
+    limit: Option<SelectLimit>,
+    offset: Option<usize>,
+}
+
+impl<'a, T: Display> SelectTasksQuery<'a, T> {
+    fn new(
+        cols: SelectCols<'a>,
+        conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
+        limit: Option<SelectLimit>,
+        offset: Option<usize>,
+    ) -> SelectTasksQuery<'a, T> {
+        SelectTasksQuery {
+            cols,
+            conditions,
+            order_by,
+            order_dir,
+            limit,
+            offset,
+        }
+    }
+}
+
+impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut query_string = format!("SELECT {} FROM {}", self.cols, Tables::Tasks);
+
+        if let Some(conditions) = &self.conditions {
+            // If select condtions provided, add to query string
+            query_string.push_str(
+                &conditions
+                    .iter()
+                    .map(|(condition, operator)| {
+                        // Map conditions to string representations
+                        let mut condition_string = condition.to_string();
+                        if let Some(operator) = operator {
+                            // If an operator is supplied, append to condition string
+                            condition_string.push_str(&format!(" {}", operator));
+                        };
+
+                        condition_string
+                    })
+                    .collect::<Vec<String>>()
+                    .join(" "),
+            );
+        }
+
+        // Default order by priority
+        let order_by = self.order_by.unwrap_or(OrderBy::Priority);
+
+        query_string.push_str(&format!(
+            " ORDER BY {} {}",
+            order_by,
+            match self.order_dir {
+                // Set order direction if provided, else use defaults
+                Some(dir) => dir,
+                None => match order_by {
+                    OrderBy::Priority => OrderDir::Desc,
+                    _ => OrderDir::Asc,
+                },
+            }
+        ));
+
+        match self.limit {
+            Some(SelectLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
+            Some(SelectLimit::All) => {}
+            None => query_string.push_str(" LIMIT 10"),
+        }
+
+        write!(f, "{query_string};")
     }
 }
 
