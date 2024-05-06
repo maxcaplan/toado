@@ -89,25 +89,46 @@ pub fn list_tasks(
     args: &flags::ListArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
+    // Determin order direction
     let order_dir = match (args.asc, args.desc) {
         (true, _) => Some(toado::OrderDir::Asc),
         (false, true) => Some(toado::OrderDir::Desc),
         (false, false) => None,
     };
+
+    // Determin columns to select
     let cols = if args.verbose {
         toado::SelectCols::All
     } else {
         toado::SelectCols::Some(Vec::from(["id", "name", "priority", "status"]))
     };
 
+    // Determin selection row limit
     let limit = match (args.full, args.limit) {
         (true, _) => Some(toado::SelectLimit::All), // Select all
         (false, Some(val)) => Some(toado::SelectLimit::Limit(val)), // Select set number
         _ => None,                                  // Select default number
     };
 
-    let tasks = app.select_tasks(cols, args.order_by, order_dir, limit, None)?;
-    Ok(Some(formatting::format_task_list(tasks, args.verbose)))
+    // Get tasks from application database
+    let tasks = app.select_tasks(cols, args.order_by, order_dir, limit, args.offset)?;
+    let num_tasks = tasks.len();
+
+    // Format tasks into a table string to display
+    let mut table_string = formatting::format_task_list(tasks, args.verbose);
+
+    // If not selecting all tasks, display number of tasks selected
+    if !args.full {
+        let start_pos = args.offset.unwrap_or(0);
+        table_string.push_str(&format!(
+            "\n{}-{} of {}",
+            start_pos,
+            start_pos + num_tasks,
+            app.get_table_row_count(toado::Tables::Tasks)?,
+        ))
+    }
+
+    Ok(Some(table_string))
 }
 
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an

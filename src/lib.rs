@@ -185,10 +185,18 @@ impl Server {
 
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
     }
+
+    pub fn get_table_row_count(&self, table: Tables) -> Result<usize, Error> {
+        Ok(self
+            .connection
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), (), |row| {
+                row.get(0)
+            })?)
+    }
 }
 
 /// Toado database tables
-enum Tables {
+pub enum Tables {
     /// "tasks"
     Tasks,
     /// "projects"
@@ -385,8 +393,12 @@ impl<'a, T: Display> SelectTasksQuery<'a, T> {
 
 impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Create basic select query string
         let mut query_string = format!("SELECT {} FROM {}", self.cols, Tables::Tasks);
 
+        //
+        // Query Conditions
+        //
         if let Some(conditions) = &self.conditions {
             // If select condtions provided, add to query string
             query_string.push_str(
@@ -407,6 +419,10 @@ impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
             );
         }
 
+        //
+        // Query Order
+        //
+
         // Default order by priority
         let order_by = self.order_by.unwrap_or(OrderBy::Priority);
 
@@ -423,10 +439,27 @@ impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
             }
         ));
 
+        //
+        // Query Limit
+        //
         match self.limit {
             Some(SelectLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
             Some(SelectLimit::All) => {}
             None => query_string.push_str(" LIMIT 10"),
+        }
+
+        //
+        // Query Offset
+        //
+        if self.limit.is_none()
+            || self
+                .limit
+                .as_ref()
+                .is_some_and(|limit| !matches!(limit, SelectLimit::All))
+        {
+            if let Some(offset) = self.offset {
+                query_string.push_str(&format!(" OFFSET {offset}"))
+            }
         }
 
         write!(f, "{query_string};")
