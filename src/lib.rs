@@ -401,8 +401,9 @@ impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
         //
         if let Some(conditions) = &self.conditions {
             // If select condtions provided, add to query string
-            query_string.push_str(
-                &conditions
+            query_string.push_str(&format!(
+                " WHERE {}",
+                conditions
                     .iter()
                     .map(|(condition, operator)| {
                         // Map conditions to string representations
@@ -415,8 +416,8 @@ impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
                         condition_string
                     })
                     .collect::<Vec<String>>()
-                    .join(" "),
-            );
+                    .join(" ")
+            ));
         }
 
         //
@@ -487,6 +488,22 @@ pub struct Task {
     pub projects: Option<Vec<String>>,
 }
 
+impl Clone for Task {
+    fn clone(&self) -> Self {
+        Task {
+            id: self.id,
+            name: self.name.clone(),
+            priority: self.priority,
+            status: self.status,
+            start_time: self.start_time.clone(),
+            end_time: self.end_time.clone(),
+            repeat: self.repeat.clone(),
+            notes: self.notes.clone(),
+            projects: self.projects.clone(),
+        }
+    }
+}
+
 /// Arguments for adding a task to the database
 pub struct AddTaskArgs {
     /// Name of the task
@@ -506,6 +523,7 @@ pub struct AddTaskArgs {
 }
 
 /// Status of an item (ie. task or project)
+#[derive(Clone, Copy)]
 pub enum ItemStatus {
     Incomplete,
     Complete,

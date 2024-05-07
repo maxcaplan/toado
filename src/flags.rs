@@ -4,13 +4,25 @@ use clap::{Args, Parser, Subcommand};
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {
-    /// Path to the toado database file
+    /// Search term for item
+    pub search: Option<String>,
+    /// Execute search for tasks (default behaviour)
     #[arg(short, long)]
-    pub file: Option<String>,
+    pub task: bool,
+    /// Execute search for projects
+    #[arg(short, long)]
+    pub project: bool,
+    /// List all item information
+    #[arg(short, long)]
+    pub verbose: bool,
     #[command(subcommand)]
     pub command: Option<Commands>,
+    /// Path to database file
+    #[arg(short, long)]
+    pub file: Option<String>,
 }
 
+/// Application subcommands
 #[derive(Subcommand)]
 pub enum Commands {
     /// Add a new item

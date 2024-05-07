@@ -10,6 +10,7 @@ fn main() {
     let args = flags::Cli::parse();
 
     let run = || -> Result<(), toado::Error> {
+        // Get application directory
         let app_dir = match init_directory() {
             Ok(d) => d,
             Err(e) => {
@@ -18,6 +19,7 @@ fn main() {
             }
         };
 
+        // Open application server
         let app = match toado::Server::open(&format!("{app_dir}/database")) {
             Ok(app) => app,
             Err(e) => {
@@ -26,25 +28,32 @@ fn main() {
             }
         };
 
+        // Init application database
         if let Err(e) = app.init() {
             eprintln!("Failed to initialize application server: {e}");
             return Err(e);
         };
 
-        // If command provided, execute and exit application
-        if let Some(command) = args.command {
-            let message = match handle_command(command, app) {
-                Ok(message) => message,
+        // If search term or command provided, execute and exit application
+        if args.search.is_some() || args.command.is_some() {
+            let res = {
+                if let Some(search) = &args.search {
+                    commands::search(search.to_string(), args, app)
+                } else if let Some(command) = args.command {
+                    handle_command(command, app)
+                } else {
+                    Ok(None)
+                }
+            };
+
+            match res {
+                Ok(Some(message)) => println!("{message}"),
                 Err(e) => {
                     eprintln!("Failed to execute command: {e}");
                     return Err(e);
                 }
+                _ => {}
             };
-
-            // If command returns message, print to stdout
-            if let Some(message) = message {
-                println!("{message}")
-            }
 
             return Ok(());
         }
@@ -66,7 +75,7 @@ fn main() {
 ///
 /// # Errors
 /// Will return an error if the creation of the application directories fails
-pub fn init_directory() -> Result<String, toado::Error> {
+fn init_directory() -> Result<String, toado::Error> {
     // Get user home directory
     let home_dir = env::var("HOME")?;
     let app_dir = format!("{home_dir}/.local/share/toado");
