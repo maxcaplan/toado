@@ -1,3 +1,4 @@
+//! Toado data formatting functions
 use table::AsciiTable;
 
 pub mod table;

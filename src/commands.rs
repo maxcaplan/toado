@@ -1,46 +1,45 @@
+//! Toado application commands
 use crate::{flags, formatting};
 use regex::Regex;
 
-pub fn search(
-    term: String,
-    args: flags::Cli,
+/// Searches for a task in a toado server database with provided search term. If term is a positive
+/// integer, searches by task id, otherwise searches by name
+///
+/// # Errors
+///
+/// Will return an error if task selection fails
+pub fn search_tasks(
+    args: flags::SearchArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    // Execute search for tasks
-    if args.task || !args.project {
-        let condition = match term.parse::<usize>() {
-            // If search term is number, select by id
-            Ok(value) => toado::QueryConditions::Equal {
-                col: "id",
-                value: value.to_string(),
-            },
-            // If search term is not number, select by name
-            Err(_) => toado::QueryConditions::Like {
-                col: "name",
-                value: format!("'%{term}%'"),
-            },
-        };
+    let condition = match args.term.parse::<usize>() {
+        // If search term is number, select by id
+        Ok(value) => toado::QueryConditions::Equal {
+            col: "id",
+            value: value.to_string(),
+        },
+        // If search term is not number, select by name
+        Err(_) => toado::QueryConditions::Like {
+            col: "name",
+            value: format!("'%{}%'", args.term),
+        },
+    };
 
-        let tasks = app.select_tasks_condition(
-            toado::SelectCols::All,
-            vec![(condition, None)],
-            Some(toado::OrderBy::Id),
-            None,
-            Some(toado::SelectLimit::All),
-            None,
-        )?;
+    let tasks = app.select_tasks_condition(
+        toado::SelectCols::All,
+        vec![(condition, None)],
+        Some(toado::OrderBy::Id),
+        None,
+        Some(toado::SelectLimit::All),
+        None,
+    )?;
 
-        if tasks.is_empty() {
-            Ok(None)
-        } else if tasks.len() == 1 {
-            Ok(Some(formatting::format_task(tasks[0].clone())))
-        } else {
-            Ok(Some(formatting::format_task_list(tasks, args.verbose)))
-        }
-    }
-    // Execute search for projects
-    else {
-        Err(Into::into("search not implemented for projects"))
+    if tasks.is_empty() {
+        Ok(None)
+    } else if tasks.len() == 1 {
+        Ok(Some(formatting::format_task(tasks[0].clone())))
+    } else {
+        Ok(Some(formatting::format_task_list(tasks, args.verbose)))
     }
 }
 
@@ -122,6 +121,10 @@ pub fn create_task(
 
     Ok((task_id, name))
 }
+
+//
+// Private methods
+//
 
 /// Gets a list of tasks from a toado server
 ///

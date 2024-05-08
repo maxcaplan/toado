@@ -37,8 +37,16 @@ fn main() {
         // If search term or command provided, execute and exit application
         if args.search.is_some() || args.command.is_some() {
             let res = {
-                if let Some(search) = &args.search {
-                    commands::search(search.to_string(), args, app)
+                if let Some(search) = args.search {
+                    handle_search(
+                        flags::SearchArgs {
+                            term: search,
+                            task: args.task,
+                            project: args.project,
+                            verbose: args.verbose,
+                        },
+                        app,
+                    )
                 } else if let Some(command) = args.command {
                     handle_command(command, app)
                 } else {
@@ -94,12 +102,29 @@ fn handle_command(
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
     let message = match command {
+        flags::Commands::Search(args) => handle_search(args, app)?,
         flags::Commands::Add(args) => handle_add(args, app)?,
         flags::Commands::Delete(_args) => return Err(Into::into("deletion is not implemented")),
         flags::Commands::Ls(args) => handle_ls(args, app)?,
     };
 
     Ok(message)
+}
+
+/// Handle the search command
+///
+/// # Errors
+///
+/// Will return an error if the task or project search fails
+fn handle_search(
+    args: flags::SearchArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    if args.task || !args.project {
+        commands::search_tasks(args, app)
+    } else {
+        Err(Into::into("search is not implemented for projects"))
+    }
 }
 
 /// Handle the add command

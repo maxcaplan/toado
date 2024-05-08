@@ -1,3 +1,4 @@
+//! Toado cli flags
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
@@ -25,12 +26,29 @@ pub struct Cli {
 /// Application subcommands
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Search for items
+    Search(SearchArgs),
     /// Add a new item
     Add(AddArgs),
     /// Remove an item
     Delete(DeleteArgs),
     /// Display a list of items
     Ls(ListArgs),
+}
+
+#[derive(Args)]
+pub struct SearchArgs {
+    /// Search term for item
+    pub term: String,
+    /// Search for tasks (default behaviour)
+    #[arg(short, long)]
+    pub task: bool,
+    /// Search for projects
+    #[arg(short, long)]
+    pub project: bool,
+    /// List all item information
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 #[derive(Args)]
