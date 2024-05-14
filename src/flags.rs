@@ -34,6 +34,8 @@ pub enum Commands {
     Delete(DeleteArgs),
     /// Display a list of items
     Ls(ListArgs),
+    /// Complete a task
+    Check(CheckArgs),
 }
 
 #[derive(Args)]
@@ -83,8 +85,8 @@ pub struct AddArgs {
 
 #[derive(Args)]
 pub struct DeleteArgs {
-    /// Name of item to delete
-    pub name: String,
+    /// Search term for item to delete
+    pub term: Option<String>,
     /// Delete task (default behaviour)
     #[arg(short, long)]
     pub task: bool,
@@ -121,4 +123,13 @@ pub struct ListArgs {
     /// List all items
     #[arg(short, long)]
     pub full: bool,
+}
+
+#[derive(Args)]
+pub struct CheckArgs {
+    /// Search term for item to check
+    pub term: Option<String>,
+    /// Mark task as incomplete
+    #[arg(short, long)]
+    pub incomplete: bool,
 }

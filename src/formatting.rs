@@ -66,7 +66,12 @@ pub fn format_task(task: toado::Task) -> String {
 }
 
 /// Format a vector of tasks as a string to be displayed to the user
-pub fn format_task_list(tasks: Vec<toado::Task>, verbose: bool) -> String {
+pub fn format_task_list(
+    tasks: Vec<toado::Task>,
+    seperate_cols: bool,
+    seperate_rows: bool,
+    verbose: bool,
+) -> String {
     let table = AsciiTable::from(
         tasks
             .into_iter()
@@ -91,5 +96,8 @@ pub fn format_task_list(tasks: Vec<toado::Task>, verbose: bool) -> String {
             .collect::<Vec<Vec<String>>>(),
     );
 
-    table.seperate_cols(true).seperate_rows(false).to_string()
+    table
+        .seperate_cols(seperate_cols)
+        .seperate_rows(seperate_rows)
+        .to_string()
 }

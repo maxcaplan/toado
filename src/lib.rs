@@ -1,9 +1,7 @@
-use std::{
-    collections::HashMap,
-    error,
-    fmt::{self, Display},
-    usize,
-};
+pub use queries::{OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery};
+use std::{collections::HashMap, error, fmt, usize};
+
+pub mod queries;
 
 pub struct Server {
     /// SQLite database connection
@@ -70,6 +68,10 @@ impl Server {
     }
 
     /// Add a new task to the database. Returns id of added task
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
     pub fn add_task(&self, args: AddTaskArgs) -> Result<i64, Error> {
         let mut map: HashMap<&str, String> = HashMap::from([
             ("name", args.name),
@@ -109,60 +111,69 @@ impl Server {
         Ok(self.connection.last_insert_rowid())
     }
 
-    /// Delete tasks from the database by a query. Returns number of rows modified
-    pub fn delete_task<T>(&self, query: QueryConditions<T>) -> Result<u64, Error>
-    where
-        T: fmt::Display,
-    {
-        let sql_string = format!("DELETE FROM tasks WHERE {};", query);
-        self.connection.execute(&sql_string, ())?;
+    /// Delete tasks from the database. Deletes all tasks matching query is Some, if None deletes
+    /// all tasks. Returns number of rows modified
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
+    pub fn delete_task(&self, query: Option<String>) -> Result<u64, Error> {
+        let mut sql_string = String::from("DELETE FROM tasks");
 
+        if let Some(query) = query {
+            sql_string.push_str(&format!(" WHERE {query}"))
+        }
+        sql_string.push(';');
+
+        self.connection.execute(&sql_string, ())?;
         Ok(self.connection.changes())
     }
 
+    /// Update tasks from the database with optional query. Only rows matching query will be
+    /// updated. If no query provided, all rows in table will be updated
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
+    pub fn update_task<U, T>(
+        &self,
+        _update: Vec<UpdateCol<U>>,
+        _query: Option<T>,
+        _limit: RowLimit,
+    ) -> Result<u64, Error>
+    where
+        U: fmt::Display,
+        T: fmt::Display,
+    {
+        Ok(0)
+    }
+
     /// Select all tasks
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
     pub fn select_tasks(
         &self,
-        cols: SelectCols,
+        cols: QueryCols,
+        condtion: Option<String>,
         order_by: Option<OrderBy>,
         order_dir: Option<OrderDir>,
-        limit: Option<SelectLimit>,
+        limit: Option<RowLimit>,
         offset: Option<usize>,
     ) -> Result<Vec<Task>, Error> {
         // `String` generic specified as it can't be infered when `conditions` is `None` :/
-        self.execute_select_tasks::<String>(SelectTasksQuery::new(
-            cols, None, order_by, order_dir, limit, offset,
-        ))
-    }
-
-    /// Select all tasks for one or more given condition
-    pub fn select_tasks_condition<T>(
-        &self,
-        cols: SelectCols,
-        conditions: Vec<(QueryConditions<T>, Option<QueryOperators>)>,
-        order_by: Option<OrderBy>,
-        order_dir: Option<OrderDir>,
-        limit: Option<SelectLimit>,
-        offset: Option<usize>,
-    ) -> Result<Vec<Task>, Error>
-    where
-        T: fmt::Display,
-    {
         self.execute_select_tasks(SelectTasksQuery::new(
-            cols,
-            Some(conditions),
-            order_by,
-            order_dir,
-            limit,
-            offset,
+            cols, condtion, order_by, order_dir, limit, offset,
         ))
     }
 
     /// Executes a select query for tasks
-    fn execute_select_tasks<T>(&self, query: SelectTasksQuery<T>) -> Result<Vec<Task>, Error>
-    where
-        T: fmt::Display,
-    {
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
+    fn execute_select_tasks(&self, query: SelectTasksQuery) -> Result<Vec<Task>, Error> {
         let mut statment = self.connection.prepare(&query.to_string())?;
 
         let rows = statment.query_map((), |row| {
@@ -186,6 +197,11 @@ impl Server {
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
     }
 
+    /// Returns the total number of rows in a given table.
+    ///
+    /// # Errors:
+    ///
+    /// Will return an error if execution of the sql statment fails
     pub fn get_table_row_count(&self, table: Tables) -> Result<usize, Error> {
         Ok(self
             .connection
@@ -219,43 +235,18 @@ impl fmt::Display for Tables {
     }
 }
 
-/// What columns to return from a select statment.
-pub enum SelectCols<'a> {
-    All,
-    Some(Vec<&'a str>),
-}
-
-impl fmt::Display for SelectCols<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::All => "*".to_string(),
-                Self::Some(cols) => cols.join(", "),
-            }
-        )
-    }
-}
-
-/// Database statment conditions
-pub enum QueryConditions<'a, T>
+/// Update action for a database column
+pub enum UpdateCol<'a, T>
 where
     T: fmt::Display,
 {
-    Equal { col: &'a str, value: T },
-    NotEqual { col: &'a str, value: T },
-    GreaterThan { col: &'a str, value: T },
-    LessThan { col: &'a str, value: T },
-    GreaterThanOrEqual { col: &'a str, value: T },
-    LessThanOrEqual { col: &'a str, value: T },
-    Between { col: &'a str, values: (T, T) },
-    Like { col: &'a str, value: T },
-    In { col: &'a str, values: Vec<T> },
+    /// Update a column with a value
+    Some(&'a str, T),
+    /// Set a column to null
+    Null(&'a str),
 }
 
-// Implements String conversion for QueryConditions
-impl<'a, T> Display for QueryConditions<'a, T>
+impl<'a, T> fmt::Display for UpdateCol<'a, T>
 where
     T: fmt::Display,
 {
@@ -264,206 +255,10 @@ where
             f,
             "{}",
             match self {
-                QueryConditions::Equal { col, value } => format!("{col} = {value}"),
-                QueryConditions::NotEqual { col, value } => format!("{col} != {value}"),
-                QueryConditions::GreaterThan { col, value } => format!("{col} > {value}"),
-                QueryConditions::LessThan { col, value } => format!("{col} < {value}"),
-                QueryConditions::GreaterThanOrEqual { col, value } => format!("{col} >= {value}"),
-                QueryConditions::LessThanOrEqual { col, value } => format!("{col} <= {value}"),
-                QueryConditions::Between { col, values } => {
-                    format!("{col} BETWEEN {} AND {}", values.0, values.1)
-                }
-                QueryConditions::Like { col, value } => format!("{col} LIKE {value}"),
-                QueryConditions::In { col, values } => format!(
-                    "{col} IN ({})",
-                    values
-                        .iter()
-                        .map(|item| item.to_string())
-                        .collect::<Vec<String>>()
-                        .join(", ") // Convert vector of values into string of format "a, b, c"
-                ),
+                Self::Some(col, val) => format!("{col} = {val}"),
+                Self::Null(col) => format!("{col} = NULL"),
             }
         )
-    }
-}
-
-/// Database statment conditional boolean logical operators
-pub enum QueryOperators {
-    And,
-    Or,
-}
-
-// Implements String conversion for QueryOperators
-impl fmt::Display for QueryOperators {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                QueryOperators::And => "AND",
-                QueryOperators::Or => "OR",
-            }
-        )
-    }
-}
-
-/// Table column to order selection by
-#[derive(Clone, Copy, clap::ValueEnum)]
-pub enum OrderBy {
-    Id,
-    Name,
-    Priority,
-    // TODO: These options cause an sql error
-    // StartDate,
-    // EndDate,
-}
-
-impl fmt::Display for OrderBy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Id => "id",
-                Self::Name => "name",
-                Self::Priority => "priority",
-                // Self::StartDate => "start_date",
-                // Self::EndDate => "end_date",
-            }
-        )
-    }
-}
-
-/// Direction of selection order.
-/// Asc: smallest value to largest
-/// Desc: Largest value to smallest
-#[derive(Clone, Copy, clap::ValueEnum)]
-pub enum OrderDir {
-    Asc,
-    Desc,
-}
-
-impl fmt::Display for OrderDir {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Asc => "ASC",
-                Self::Desc => "DESC",
-            }
-        )
-    }
-}
-
-pub enum SelectLimit {
-    Limit(usize),
-    All,
-}
-
-/// Task select query struct
-struct SelectTasksQuery<'a, T: Display> {
-    cols: SelectCols<'a>,
-    conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
-    order_by: Option<OrderBy>,
-    order_dir: Option<OrderDir>,
-    limit: Option<SelectLimit>,
-    offset: Option<usize>,
-}
-
-impl<'a, T: Display> SelectTasksQuery<'a, T> {
-    fn new(
-        cols: SelectCols<'a>,
-        conditions: Option<Vec<(QueryConditions<'a, T>, Option<QueryOperators>)>>,
-        order_by: Option<OrderBy>,
-        order_dir: Option<OrderDir>,
-        limit: Option<SelectLimit>,
-        offset: Option<usize>,
-    ) -> SelectTasksQuery<'a, T> {
-        SelectTasksQuery {
-            cols,
-            conditions,
-            order_by,
-            order_dir,
-            limit,
-            offset,
-        }
-    }
-}
-
-impl<'a, T: Display> fmt::Display for SelectTasksQuery<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic select query string
-        let mut query_string = format!("SELECT {} FROM {}", self.cols, Tables::Tasks);
-
-        //
-        // Query Conditions
-        //
-        if let Some(conditions) = &self.conditions {
-            // If select condtions provided, add to query string
-            query_string.push_str(&format!(
-                " WHERE {}",
-                conditions
-                    .iter()
-                    .map(|(condition, operator)| {
-                        // Map conditions to string representations
-                        let mut condition_string = condition.to_string();
-                        if let Some(operator) = operator {
-                            // If an operator is supplied, append to condition string
-                            condition_string.push_str(&format!(" {}", operator));
-                        };
-
-                        condition_string
-                    })
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            ));
-        }
-
-        //
-        // Query Order
-        //
-
-        // Default order by priority
-        let order_by = self.order_by.unwrap_or(OrderBy::Priority);
-
-        query_string.push_str(&format!(
-            " ORDER BY {} {}",
-            order_by,
-            match self.order_dir {
-                // Set order direction if provided, else use defaults
-                Some(dir) => dir,
-                None => match order_by {
-                    OrderBy::Priority => OrderDir::Desc,
-                    _ => OrderDir::Asc,
-                },
-            }
-        ));
-
-        //
-        // Query Limit
-        //
-        match self.limit {
-            Some(SelectLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
-            Some(SelectLimit::All) => {}
-            None => query_string.push_str(" LIMIT 10"),
-        }
-
-        //
-        // Query Offset
-        //
-        if self.limit.is_none()
-            || self
-                .limit
-                .as_ref()
-                .is_some_and(|limit| !matches!(limit, SelectLimit::All))
-        {
-            if let Some(offset) = self.offset {
-                query_string.push_str(&format!(" OFFSET {offset}"))
-            }
-        }
-
-        write!(f, "{query_string};")
     }
 }
 

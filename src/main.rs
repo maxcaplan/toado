@@ -82,6 +82,7 @@ fn main() {
 /// Creates the directory for application files if one does not exist
 ///
 /// # Errors
+///
 /// Will return an error if the creation of the application directories fails
 fn init_directory() -> Result<String, toado::Error> {
     // Get user home directory
@@ -96,6 +97,7 @@ fn init_directory() -> Result<String, toado::Error> {
 /// Handle application commands from the CLI
 ///
 /// # Errors
+///
 /// Will return an error if the executed command fails
 fn handle_command(
     command: flags::Commands,
@@ -104,8 +106,9 @@ fn handle_command(
     let message = match command {
         flags::Commands::Search(args) => handle_search(args, app)?,
         flags::Commands::Add(args) => handle_add(args, app)?,
-        flags::Commands::Delete(_args) => return Err(Into::into("deletion is not implemented")),
+        flags::Commands::Delete(args) => handle_delete(args, app)?,
         flags::Commands::Ls(args) => handle_ls(args, app)?,
+        flags::Commands::Check(args) => handle_check(args, app)?,
     };
 
     Ok(message)
@@ -140,6 +143,20 @@ fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>
     }
 }
 
+fn handle_delete(
+    args: flags::DeleteArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    if args.task || !args.project {
+        match commands::delete_task(args, app)? {
+            Some(id) => Ok(Some(format!("Deleted task with id {id}"))),
+            None => Ok(None),
+        }
+    } else {
+        Err(Into::into("project deletion not implemented"))
+    }
+}
+
 /// Handle the list command
 ///
 /// # Errors
@@ -150,4 +167,12 @@ fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>
     } else {
         Err(Into::into("task listing not implemented"))
     }
+}
+
+/// Handle the check command
+fn handle_check(
+    _args: flags::CheckArgs,
+    _app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    Ok(None)
 }

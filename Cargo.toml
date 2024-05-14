@@ -8,6 +8,6 @@ description = "A simple interactive task and project manager for the command lin
 clap = { version = "4.5.4", features = ["derive"] }
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 console = "0.15.8"
-dialoguer = "0.11.0"
+dialoguer = { version = "0.11.0", features = ["fuzzy-select"] }
 regex = "1.10.4"
 

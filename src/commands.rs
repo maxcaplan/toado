@@ -25,12 +25,12 @@ pub fn search_tasks(
         },
     };
 
-    let tasks = app.select_tasks_condition(
-        toado::SelectCols::All,
-        vec![(condition, None)],
+    let tasks = app.select_tasks(
+        toado::QueryCols::All,
+        Some(condition.to_string()),
         Some(toado::OrderBy::Id),
         None,
-        Some(toado::SelectLimit::All),
+        Some(toado::RowLimit::All),
         None,
     )?;
 
@@ -39,7 +39,12 @@ pub fn search_tasks(
     } else if tasks.len() == 1 {
         Ok(Some(formatting::format_task(tasks[0].clone())))
     } else {
-        Ok(Some(formatting::format_task_list(tasks, args.verbose)))
+        Ok(Some(formatting::format_task_list(
+            tasks,
+            true,
+            false,
+            args.verbose,
+        )))
     }
 }
 
@@ -122,6 +127,97 @@ pub fn create_task(
     Ok((task_id, name))
 }
 
+/// Deletes a task in a toado server database. Searches for task to delete with given search term,
+/// or prompts user for search term if one is not provided
+///
+/// # Errors
+///
+/// Will return an error if user input fails, if deletion operation fails, or if no tasks are
+/// deleted
+pub fn delete_task(
+    args: flags::DeleteArgs,
+    app: toado::Server,
+) -> Result<Option<i64>, toado::Error> {
+    let theme = dialoguer::theme::ColorfulTheme::default();
+
+    let search_term = option_or_input(
+        args.term,
+        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
+    )?;
+
+    let select_condition = match search_term.parse::<usize>() {
+        // If search term is number, select by id
+        Ok(num) => toado::QueryConditions::Equal {
+            col: "id",
+            value: num.to_string(),
+        },
+        // If search term is not number, select by name
+        Err(_) => toado::QueryConditions::Like {
+            col: "name",
+            value: format!("'%{search_term}%'"),
+        },
+    };
+
+    // Get tasks matching name argument
+    let tasks = app.select_tasks(
+        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+        Some(select_condition.to_string()),
+        Some(toado::OrderBy::Name),
+        None,
+        Some(toado::RowLimit::All),
+        None,
+    )?;
+
+    // If no tasks match search term, return error
+    if tasks.is_empty() {
+        return Err(Into::into(format!("no task matches {search_term}")));
+    }
+
+    let task = if tasks.len() == 1 {
+        &tasks[0]
+    }
+    // If multiple tasks match name argument, prompt user to select one
+    else {
+        // Format matching tasks into vector of strings
+        let task_strings: Vec<String> =
+            formatting::format_task_list(tasks.clone(), true, false, false)
+                .split('\n')
+                .map(|line| line.to_string())
+                .collect();
+
+        // Get task selection from user
+        match tasks.get(
+            dialoguer::Select::with_theme(&theme)
+                .with_prompt("Select task to delete")
+                .items(&task_strings)
+                .interact()?,
+        ) {
+            Some(task) => task,
+            None => return Err(Into::into("selected task should exist")),
+        }
+    };
+
+    // Get selected task id
+    let id = match task.id {
+        Some(id) => id,
+        None => return Err(Into::into("task id should exist")),
+    };
+
+    let affected_rows = app.delete_task(Some(
+        toado::QueryConditions::Equal {
+            col: "id",
+            value: id,
+        }
+        .to_string(),
+    ))?;
+
+    if affected_rows >= 1 {
+        Ok(Some(id))
+    } else {
+        Err(Into::into("no tasks deleted"))
+    }
+}
+
 //
 // Private methods
 //
@@ -144,24 +240,24 @@ pub fn list_tasks(
 
     // Determin columns to select
     let cols = if args.verbose {
-        toado::SelectCols::All
+        toado::QueryCols::All
     } else {
-        toado::SelectCols::Some(Vec::from(["id", "name", "priority", "status"]))
+        toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
     };
 
     // Determin selection row limit
     let limit = match (args.full, args.limit) {
-        (true, _) => Some(toado::SelectLimit::All), // Select all
-        (false, Some(val)) => Some(toado::SelectLimit::Limit(val)), // Select set number
-        _ => None,                                  // Select default number
+        (true, _) => Some(toado::RowLimit::All), // Select all
+        (false, Some(val)) => Some(toado::RowLimit::Limit(val)), // Select set number
+        _ => None,                               // Select default number
     };
 
     // Get tasks from application database
-    let tasks = app.select_tasks(cols, args.order_by, order_dir, limit, args.offset)?;
+    let tasks = app.select_tasks(cols, None, args.order_by, order_dir, limit, args.offset)?;
     let num_tasks = tasks.len();
 
     // Format tasks into a table string to display
-    let mut table_string = formatting::format_task_list(tasks, args.verbose);
+    let mut table_string = formatting::format_task_list(tasks, true, false, args.verbose);
 
     // If not selecting all tasks, display number of tasks selected
     if !args.full {
