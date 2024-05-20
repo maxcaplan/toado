@@ -145,57 +145,12 @@ pub fn delete_task(
         dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
     )?;
 
-    let select_condition = match search_term.parse::<usize>() {
-        // If search term is number, select by id
-        Ok(num) => toado::QueryConditions::Equal {
-            col: "id",
-            value: num.to_string(),
-        },
-        // If search term is not number, select by name
-        Err(_) => toado::QueryConditions::Like {
-            col: "name",
-            value: format!("'%{search_term}%'"),
-        },
-    };
-
-    // Get tasks matching name argument
-    let tasks = app.select_tasks(
+    let task = prompt_task_selection(
+        &app,
+        search_term,
         toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
-        Some(select_condition.to_string()),
-        Some(toado::OrderBy::Name),
-        None,
-        Some(toado::RowLimit::All),
-        None,
+        &theme,
     )?;
-
-    // If no tasks match search term, return error
-    if tasks.is_empty() {
-        return Err(Into::into(format!("no task matches {search_term}")));
-    }
-
-    let task = if tasks.len() == 1 {
-        &tasks[0]
-    }
-    // If multiple tasks match name argument, prompt user to select one
-    else {
-        // Format matching tasks into vector of strings
-        let task_strings: Vec<String> =
-            formatting::format_task_list(tasks.clone(), true, false, false)
-                .split('\n')
-                .map(|line| line.to_string())
-                .collect();
-
-        // Get task selection from user
-        match tasks.get(
-            dialoguer::Select::with_theme(&theme)
-                .with_prompt("Select task to delete")
-                .items(&task_strings)
-                .interact()?,
-        ) {
-            Some(task) => task,
-            None => return Err(Into::into("selected task should exist")),
-        }
-    };
 
     // Get selected task id
     let id = match task.id {
@@ -273,6 +228,58 @@ pub fn list_tasks(
     Ok(Some(table_string))
 }
 
+pub fn check_task(
+    args: flags::CheckArgs,
+    app: toado::Server,
+) -> Result<(String, toado::ItemStatus), toado::Error> {
+    let theme = dialoguer::theme::ColorfulTheme::default();
+
+    let search_term = option_or_input(
+        args.term,
+        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
+    )?;
+
+    let task = prompt_task_selection(
+        &app,
+        search_term,
+        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+        &theme,
+    )?;
+
+    // Get selected task id
+    let id = match task.id {
+        Some(id) => id,
+        None => return Err(Into::into("task id should exist")),
+    };
+
+    let name = match task.name {
+        Some(name) => name,
+        None => return Err(Into::into("task name should exist")),
+    };
+
+    let new_status = match args.incomplete {
+        true => toado::ItemStatus::Incomplete,
+        false => toado::ItemStatus::Complete,
+    };
+
+    let affected_rows = app.update_task(
+        toado::UpdateTaskCols::status(new_status),
+        Some(
+            toado::QueryConditions::Equal {
+                col: "id",
+                value: id,
+            }
+            .to_string(),
+        ),
+    )?;
+
+    if affected_rows == 0 {
+        Err(Into::into("no rows affected by update"))
+    } else {
+        Ok((name, new_status))
+    }
+}
+
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an
 /// input of type `T`.
 ///
@@ -311,6 +318,72 @@ fn option_or_input_option(
             } else {
                 None
             })
+        }
+    }
+}
+
+/// Selects tasks from an application database given a search term. If multiple tasks match the
+/// term, prompts the user to select one of the matching tasks and returns it. If one task matches
+/// inputed name, returns said task
+///
+/// # Errors
+/// Will return an error if no tasks match the search term
+fn prompt_task_selection(
+    app: &toado::Server,
+    search_term: String,
+    cols: toado::QueryCols,
+    theme: &dyn dialoguer::theme::Theme,
+) -> Result<toado::Task, toado::Error> {
+    let select_condition = match search_term.parse::<usize>() {
+        // If search term is number, select by id
+        Ok(num) => toado::QueryConditions::Equal {
+            col: "id",
+            value: num.to_string(),
+        },
+        // If search term is not number, select by name
+        Err(_) => toado::QueryConditions::Like {
+            col: "name",
+            value: format!("'%{search_term}%'"),
+        },
+    };
+
+    // Get tasks matching name argument
+    let mut tasks = app.select_tasks(
+        // toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+        cols,
+        Some(select_condition.to_string()),
+        Some(toado::OrderBy::Name),
+        None,
+        Some(toado::RowLimit::All),
+        None,
+    )?;
+
+    // If no tasks match search term, return error
+    if tasks.is_empty() {
+        return Err(Into::into(format!("no task matches {search_term}")));
+    }
+
+    if tasks.len() == 1 {
+        Ok(tasks.remove(0))
+    }
+    // If multiple tasks match name argument, prompt user to select one
+    else {
+        // Format matching tasks into vector of strings
+        let task_strings: Vec<String> =
+            formatting::format_task_list(tasks.clone(), true, false, false)
+                .split('\n')
+                .map(|line| line.to_string())
+                .collect();
+
+        // Get task selection from user
+        match tasks.get(
+            dialoguer::Select::with_theme(theme)
+                .with_prompt("Select task")
+                .items(&task_strings)
+                .interact()?,
+        ) {
+            Some(task) => Ok(task.clone()),
+            None => Err(Into::into("selected task should exist")),
         }
     }
 }

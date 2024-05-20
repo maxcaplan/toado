@@ -171,8 +171,12 @@ fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>
 
 /// Handle the check command
 fn handle_check(
-    _args: flags::CheckArgs,
-    _app: toado::Server,
+    args: flags::CheckArgs,
+    app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    Ok(None)
+    let (task_name, task_status) = commands::check_task(args, app)?;
+    Ok(Some(format!(
+        "Set '{task_name}' to {}",
+        task_status.to_string().to_uppercase()
+    )))
 }

@@ -1,4 +1,7 @@
-pub use queries::{OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery};
+pub use queries::{
+    OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
+    UpdateTaskCols, UpdateTaskQuery,
+};
 use std::{collections::HashMap, error, fmt, usize};
 
 pub mod queries;
@@ -130,22 +133,23 @@ impl Server {
     }
 
     /// Update tasks from the database with optional query. Only rows matching query will be
-    /// updated. If no query provided, all rows in table will be updated
+    /// updated. If no query provided, all rows in table will be updated. Returns the number of
+    /// rows modified by update
     ///
     /// # Errors:
     ///
     /// Will return an error if execution of the sql statment fails
-    pub fn update_task<U, T>(
+    pub fn update_task(
         &self,
-        _update: Vec<UpdateCol<U>>,
-        _query: Option<T>,
-        _limit: RowLimit,
-    ) -> Result<u64, Error>
-    where
-        U: fmt::Display,
-        T: fmt::Display,
-    {
-        Ok(0)
+        update_cols: UpdateTaskCols,
+        condition: Option<String>,
+    ) -> Result<u64, Error> {
+        self.connection.execute(
+            &UpdateTaskQuery::new(update_cols, condition).to_string(),
+            (),
+        )?;
+
+        Ok(self.connection.changes())
     }
 
     /// Select all tasks
@@ -162,19 +166,9 @@ impl Server {
         limit: Option<RowLimit>,
         offset: Option<usize>,
     ) -> Result<Vec<Task>, Error> {
-        // `String` generic specified as it can't be infered when `conditions` is `None` :/
-        self.execute_select_tasks(SelectTasksQuery::new(
-            cols, condtion, order_by, order_dir, limit, offset,
-        ))
-    }
-
-    /// Executes a select query for tasks
-    ///
-    /// # Errors:
-    ///
-    /// Will return an error if execution of the sql statment fails
-    fn execute_select_tasks(&self, query: SelectTasksQuery) -> Result<Vec<Task>, Error> {
-        let mut statment = self.connection.prepare(&query.to_string())?;
+        let mut statment = self.connection.prepare(
+            &SelectTasksQuery::new(cols, condtion, order_by, order_dir, limit, offset).to_string(),
+        )?;
 
         let rows = statment.query_map((), |row| {
             let status = match row.get::<&str, i64>("status") {
@@ -230,33 +224,6 @@ impl fmt::Display for Tables {
                 Self::Tasks => "tasks",
                 Self::Projects => "projects",
                 Self::TaskAssignments => "task_assignments",
-            }
-        )
-    }
-}
-
-/// Update action for a database column
-pub enum UpdateCol<'a, T>
-where
-    T: fmt::Display,
-{
-    /// Update a column with a value
-    Some(&'a str, T),
-    /// Set a column to null
-    Null(&'a str),
-}
-
-impl<'a, T> fmt::Display for UpdateCol<'a, T>
-where
-    T: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Some(col, val) => format!("{col} = {val}"),
-                Self::Null(col) => format!("{col} = NULL"),
             }
         )
     }
