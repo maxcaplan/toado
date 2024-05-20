@@ -3,6 +3,9 @@ name = "toado"
 version = "0.3.0"
 edition = "2021"
 description = "A simple interactive task and project manager for the command line"
+license = "MIT"
+repository = "https://github.com/maxcaplan/toado"
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
