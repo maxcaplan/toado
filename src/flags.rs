@@ -32,6 +32,8 @@ pub enum Commands {
     Add(AddArgs),
     /// Remove an item
     Delete(DeleteArgs),
+    /// Update an item
+    Update(UpdateArgs),
     /// Display a list of items
     Ls(ListArgs),
     /// Complete a task
@@ -91,6 +93,18 @@ pub struct DeleteArgs {
     #[arg(short, long)]
     pub task: bool,
     /// Delete project
+    #[arg(short, long)]
+    pub project: bool,
+}
+
+#[derive(Args)]
+pub struct UpdateArgs {
+    /// Search term for item to update
+    pub term: Option<String>,
+    /// Update task (default behaviour)
+    #[arg(short, long)]
+    pub task: bool,
+    /// Update project
     #[arg(short, long)]
     pub project: bool,
 }

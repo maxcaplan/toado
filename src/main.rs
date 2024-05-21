@@ -116,6 +116,7 @@ fn handle_command(
         flags::Commands::Search(args) => handle_search(args, app)?,
         flags::Commands::Add(args) => handle_add(args, app)?,
         flags::Commands::Delete(args) => handle_delete(args, app)?,
+        flags::Commands::Update(args) => handle_update(args, app)?,
         flags::Commands::Ls(args) => handle_ls(args, app)?,
         flags::Commands::Check(args) => handle_check(args, app)?,
     };
@@ -163,6 +164,17 @@ fn handle_delete(
         }
     } else {
         Err(Into::into("project deletion not implemented"))
+    }
+}
+
+fn handle_update(
+    args: flags::UpdateArgs,
+    _app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    if args.task || !args.project {
+        Ok(None)
+    } else {
+        Err(Into::into("project updating is not implemented"))
     }
 }
 
