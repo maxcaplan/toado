@@ -2,7 +2,7 @@ pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
 };
-use std::{collections::HashMap, error, fmt, usize};
+use std::{collections::HashMap, error, fmt, path::Path, usize};
 
 pub mod queries;
 
@@ -20,8 +20,11 @@ impl Server {
     /// # Errors
     ///
     /// Will return an error if the sqlite connection fails
-    pub fn open(file_path: &str) -> Result<Server, Error> {
-        let connection = rusqlite::Connection::open(file_path).map_err(|e| e.to_string())?;
+    pub fn open<P>(file_path: P) -> Result<Server, Error>
+    where
+        P: AsRef<Path>,
+    {
+        let connection = rusqlite::Connection::open(file_path)?;
 
         Ok(Server { connection })
     }

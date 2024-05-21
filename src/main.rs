@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{env, fs, process};
+use std::{env, fs, path::PathBuf, process};
 
 mod commands;
 mod flags;
@@ -11,7 +11,7 @@ fn main() {
 
     let run = || -> Result<(), toado::Error> {
         // Get application directory
-        let app_dir = match init_directory() {
+        let database_path = match init_database_path(args.file) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("Failed to initialize application directory: {e}");
@@ -20,7 +20,7 @@ fn main() {
         };
 
         // Open application server
-        let app = match toado::Server::open(&format!("{app_dir}/database")) {
+        let app = match toado::Server::open(database_path) {
             Ok(app) => app,
             Err(e) => {
                 eprintln!("Failed to create application server: {e}");
@@ -79,19 +79,28 @@ fn main() {
     }
 }
 
-/// Creates the directory for application files if one does not exist
+/// Gets the path to the application database. If none is provieded, uses the default database file
+/// location while ensuring the path exists
 ///
 /// # Errors
 ///
-/// Will return an error if the creation of the application directories fails
-fn init_directory() -> Result<String, toado::Error> {
-    // Get user home directory
-    let home_dir = env::var("HOME")?;
-    let app_dir = format!("{home_dir}/.local/share/toado");
+/// Will return an error if getting the home directory fails, or if creating the default database
+/// file location fails
+fn init_database_path(path_string: Option<String>) -> Result<PathBuf, toado::Error> {
+    if let Some(path_string) = path_string {
+        let path = PathBuf::from(path_string);
+        Ok(path)
+    } else {
+        let home_dir = env::var("HOME")?;
+        let mut path = PathBuf::from(format!("{home_dir}/.local/share/toado/"));
 
-    // Create application directory if it doesn't exist
-    fs::create_dir_all(&app_dir)?;
-    Ok(app_dir)
+        // Ensure application directory exists
+        fs::create_dir_all(path.clone())?;
+
+        // Append database filename to end of path
+        path.push("database");
+        Ok(path)
+    }
 }
 
 /// Handle application commands from the CLI
