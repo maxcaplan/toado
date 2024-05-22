@@ -224,7 +224,7 @@ impl fmt::Display for UpdateTaskCols {
         actions = push_action(actions, &self.repeat, "repeat");
         actions = push_action(actions, &self.notes, "notes");
 
-        write!(f, "{}", actions.join(" "))
+        write!(f, "{}", actions.join(","))
     }
 }
 
