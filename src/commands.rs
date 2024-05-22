@@ -64,14 +64,7 @@ pub fn create_task(
         args.name,
         dialoguer::Input::with_theme(&theme)
             .with_prompt("Name")
-            .validate_with(|input: &String| {
-                let r = Regex::new(r"(^[0-9]+$|^\d)").expect("Regex creation should not fail");
-                if r.is_match(input) {
-                    Err("Name cannot start or be a number")
-                } else {
-                    Ok(())
-                }
-            }),
+            .validate_with(|input: &String| validate_task_name(input)),
     )?;
 
     let priority = option_or_input(
@@ -194,13 +187,17 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
     )?;
 
     // Get selected task id
-    let id = match task.id {
+    let task_id = match task.id {
         Some(id) => id,
         None => return Err(Into::into("task id should exist")),
     };
 
+    // surronds string with quotes
+    let quotes = |value: String| format!("'{value}'");
+
     let update_cols: toado::UpdateTaskCols = {
         if args.has_task_update_values() {
+            // If update values are set by command arguments, use those values
             fn nullable_into_update_action(
                 flag: Option<flags::NullableString>,
             ) -> toado::UpdateAction<String> {
@@ -210,9 +207,6 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
                     None => toado::UpdateAction::None,
                 }
             }
-
-            // surronds string with quotes
-            let quotes = |value: String| format!("'{value}'");
 
             toado::UpdateTaskCols::new(
                 toado::UpdateAction::from(args.name.map(quotes)),
@@ -224,7 +218,76 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
                 nullable_into_update_action(args.notes.map(|v| v.map(quotes))),
             )
         } else {
-            todo!();
+            // Else, prompt user for update values
+
+            // Get current task values
+            let current_name = match task.name {
+                Some(value) => value,
+                None => return Err(Into::into("task name should exist")),
+            };
+            let current_priority = match task.priority {
+                Some(value) => value,
+                None => return Err(Into::into("task priority should exist")),
+            };
+            let current_start_time = task.start_time.unwrap_or("".to_string());
+            let current_end_time = task.end_time.unwrap_or("".to_string());
+            let current_repeat = task.repeat.unwrap_or("".to_string());
+            let current_notes = task.notes.unwrap_or("".to_string());
+
+            // Get user input for update values
+            let name: String = dialoguer::Input::with_theme(&theme)
+                .with_prompt("Name")
+                .validate_with(|input: &String| validate_task_name(input))
+                .with_initial_text(current_name)
+                .interact_text()?;
+
+            let priority: u64 = dialoguer::Input::with_theme(&theme)
+                .with_prompt("Priority")
+                .default(0)
+                .with_initial_text(current_priority.to_string())
+                .interact_text()?;
+
+            let start_time: String = dialoguer::Input::with_theme(&theme)
+                .with_prompt("Start Time (optional)")
+                .with_initial_text(current_start_time)
+                .allow_empty(true)
+                .interact_text()?;
+
+            let end_time: String = dialoguer::Input::with_theme(&theme)
+                .with_prompt("End Time (optional)")
+                .with_initial_text(current_end_time)
+                .allow_empty(true)
+                .interact_text()?;
+
+            let repeat: String = dialoguer::Input::with_theme(&theme)
+                .with_prompt("Repeat (optional)")
+                .with_initial_text(current_repeat)
+                .allow_empty(true)
+                .interact_text()?;
+
+            let notes: String = dialoguer::Input::with_theme(&theme)
+                .with_prompt("Notes (optional)")
+                .with_initial_text(current_notes)
+                .allow_empty(true)
+                .interact_text()?;
+
+            fn string_to_update_action(s: String) -> toado::UpdateAction<String> {
+                if s.is_empty() {
+                    toado::UpdateAction::Null
+                } else {
+                    toado::UpdateAction::Some(format!("'{s}'"))
+                }
+            }
+
+            toado::UpdateTaskCols::new(
+                toado::UpdateAction::Some(quotes(name)),
+                toado::UpdateAction::Some(priority),
+                toado::UpdateAction::None,
+                string_to_update_action(start_time),
+                string_to_update_action(end_time),
+                string_to_update_action(repeat),
+                string_to_update_action(notes),
+            )
         }
     };
 
@@ -233,7 +296,7 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
         Some(
             toado::QueryConditions::Equal {
                 col: "id",
-                value: id,
+                value: task_id,
             }
             .to_string(),
         ),
@@ -452,5 +515,14 @@ fn prompt_task_selection(
             Some(task) => Ok(task.clone()),
             None => Err(Into::into("selected task should exist")),
         }
+    }
+}
+
+fn validate_task_name(input: &str) -> Result<(), String> {
+    let r = Regex::new(r"(^[0-9]+$|^\d)").expect("Regex creation should not fail");
+    if r.is_match(input) {
+        Err("Name cannot start or be a number".to_string())
+    } else {
+        Ok(())
     }
 }
