@@ -173,9 +173,72 @@ pub fn delete_task(
     }
 }
 
-//
-// Private methods
-//
+/// Update a task in a toado server
+///
+/// # Errors
+///
+/// Will return an error if user input fails, if task updating fails, or if no task is updated
+pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, toado::Error> {
+    let theme = dialoguer::theme::ColorfulTheme::default();
+
+    let search_term = option_or_input(
+        args.term.clone(),
+        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
+    )?;
+
+    let task = prompt_task_selection(
+        &app,
+        search_term,
+        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+        &theme,
+    )?;
+
+    // Get selected task id
+    let id = match task.id {
+        Some(id) => id,
+        None => return Err(Into::into("task id should exist")),
+    };
+
+    let update_cols: toado::UpdateTaskCols = {
+        if args.has_task_update_values() {
+            fn nullable_into_update_action(
+                flag: Option<flags::NullableString>,
+            ) -> toado::UpdateAction<String> {
+                match flag {
+                    Some(flags::NullableString::Some(value)) => toado::UpdateAction::Some(value),
+                    Some(flags::NullableString::Null) => toado::UpdateAction::Null,
+                    None => toado::UpdateAction::None,
+                }
+            }
+
+            // surronds string with quotes
+            let quotes = |value: String| format!("'{value}'");
+
+            toado::UpdateTaskCols::new(
+                toado::UpdateAction::from(args.name.map(quotes)),
+                toado::UpdateAction::from(args.item_priority),
+                toado::UpdateAction::None,
+                nullable_into_update_action(args.start_time.map(|v| v.map(quotes))),
+                nullable_into_update_action(args.end_time.map(|v| v.map(quotes))),
+                nullable_into_update_action(args.repeat.map(|v| v.map(quotes))),
+                nullable_into_update_action(args.notes.map(|v| v.map(quotes))),
+            )
+        } else {
+            todo!();
+        }
+    };
+
+    app.update_task(
+        update_cols,
+        Some(
+            toado::QueryConditions::Equal {
+                col: "id",
+                value: id,
+            }
+            .to_string(),
+        ),
+    )
+}
 
 /// Gets a list of tasks from a toado server
 ///
@@ -279,6 +342,10 @@ pub fn check_task(
         Ok((name, new_status))
     }
 }
+
+//
+// Private methods
+//
 
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an
 /// input of type `T`.

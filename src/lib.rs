@@ -6,6 +6,7 @@ use std::{collections::HashMap, error, fmt, path::Path, usize};
 
 pub mod queries;
 
+/// Toado application server
 pub struct Server {
     /// SQLite database connection
     connection: rusqlite::Connection,
