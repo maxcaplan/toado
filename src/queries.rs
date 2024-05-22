@@ -42,18 +42,6 @@ impl<T> UpdateAction<T>
 where
     T: fmt::Display,
 {
-    // fn map<U, F>(self, f: F) -> UpdateAction<U>
-    // where
-    //     U: fmt::Display,
-    //     F: FnOnce(T) -> U,
-    // {
-    //     match self {
-    //         Self::Some(x) => UpdateAction::Some(f(x)),
-    //         Self::None => UpdateAction::None,
-    //         Self::Null => UpdateAction::Null,
-    //     }
-    // }
-
     fn map_from<U, F>(from: &UpdateAction<T>, f: F) -> UpdateAction<U>
     where
         U: fmt::Display,
@@ -77,6 +65,18 @@ where
             Self::Some(value) => format!("{col} = {value}"),
             Self::Null => format!("{col} = NULL"),
             Self::None => "".to_string(),
+        }
+    }
+}
+
+impl<T> From<Option<T>> for UpdateAction<T>
+where
+    T: fmt::Display,
+{
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(value) => Self::Some(value),
+            None => Self::None,
         }
     }
 }
@@ -224,7 +224,7 @@ impl fmt::Display for UpdateTaskCols {
         actions = push_action(actions, &self.repeat, "repeat");
         actions = push_action(actions, &self.notes, "notes");
 
-        write!(f, "{}", actions.join(" "))
+        write!(f, "{}", actions.join(","))
     }
 }
 

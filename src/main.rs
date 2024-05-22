@@ -7,8 +7,10 @@ mod formatting;
 
 /// "The ships hung in the sky in much the same way that bricks don't."
 fn main() {
+    // Get CLI arguments
     let args = flags::Cli::parse();
 
+    // Run the application and capture result
     let run = || -> Result<(), toado::Error> {
         // Get application directory
         let database_path = match init_database_path(args.file) {
@@ -71,10 +73,13 @@ fn main() {
         Ok(())
     };
 
+    // If running the application results in error, terminate process
     if let Err(e) = run() {
+        // If there is a source of the error, print to stderr
         if let Some(e) = e.source() {
             eprintln!("Caused by: {e}")
         }
+
         process::exit(1)
     }
 }
@@ -116,6 +121,7 @@ fn handle_command(
         flags::Commands::Search(args) => handle_search(args, app)?,
         flags::Commands::Add(args) => handle_add(args, app)?,
         flags::Commands::Delete(args) => handle_delete(args, app)?,
+        flags::Commands::Update(args) => handle_update(args, app)?,
         flags::Commands::Ls(args) => handle_ls(args, app)?,
         flags::Commands::Check(args) => handle_check(args, app)?,
     };
@@ -142,6 +148,7 @@ fn handle_search(
 /// Handle the add command
 ///
 /// # Errors
+///
 /// Will return an error if the task or poject creation fails
 fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
@@ -152,6 +159,11 @@ fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>
     }
 }
 
+/// Handle the delete command
+///
+/// # Errors
+///
+/// Will return an error if task or project deletion fails
 fn handle_delete(
     args: flags::DeleteArgs,
     app: toado::Server,
@@ -166,9 +178,27 @@ fn handle_delete(
     }
 }
 
+/// Handle the update command
+///
+/// # Errors
+///
+/// Will return an error if task or project updating fails
+fn handle_update(
+    args: flags::UpdateArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    if args.task || !args.project {
+        let affected_rows = commands::update_task(args, app)?;
+        Ok(Some(format!("{affected_rows} row(s) updated")))
+    } else {
+        Err(Into::into("project updating is not implemented"))
+    }
+}
+
 /// Handle the list command
 ///
 /// # Errors
+///
 /// Will return an error if the task or project selection fails
 fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
@@ -179,6 +209,10 @@ fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>
 }
 
 /// Handle the check command
+///
+/// # Errors
+///
+/// Will return an error if task checking fails
 fn handle_check(
     args: flags::CheckArgs,
     app: toado::Server,

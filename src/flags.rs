@@ -32,6 +32,8 @@ pub enum Commands {
     Add(AddArgs),
     /// Remove an item
     Delete(DeleteArgs),
+    /// Update an item
+    Update(UpdateArgs),
     /// Display a list of items
     Ls(ListArgs),
     /// Complete a task
@@ -75,7 +77,7 @@ pub struct AddArgs {
     /// Notes to add to item
     #[arg(short, long)]
     pub notes: Option<String>,
-    /// Repetition of item (Only applies to tasks)
+    /// Repetition of item (tasks only)
     #[arg(short, long)]
     pub repeat: Option<String>,
     /// Skip optional fields
@@ -93,6 +95,58 @@ pub struct DeleteArgs {
     /// Delete project
     #[arg(short, long)]
     pub project: bool,
+}
+
+#[derive(Args)]
+pub struct UpdateArgs {
+    /// Search term for item to update
+    pub term: Option<String>,
+    /// Update task (default behaviour)
+    #[arg(short, long)]
+    pub task: bool,
+    /// Update project
+    #[arg(short, long)]
+    pub project: bool,
+    /// Update Name of item
+    #[arg(short, long)]
+    pub name: Option<String>,
+    /// Update Priority of item
+    #[arg(short, long, value_name = "PRIORITY")]
+    pub item_priority: Option<u64>,
+    /// Update Start time of item
+    #[arg(short, long, value_name = "TIME|NULL")]
+    pub start_time: Option<NullableString>,
+    /// Update End time of item
+    #[arg(short, long, value_name = "TIME|NULL")]
+    pub end_time: Option<NullableString>,
+    /// Update item notes
+    #[arg(long, value_name = "NOTES|NULL")]
+    pub notes: Option<NullableString>,
+    /// Update Repetition of item (tasks only)
+    #[arg(short, long, value_name = "REPEAT|NULL")]
+    pub repeat: Option<NullableString>,
+}
+
+impl UpdateArgs {
+    /// Returns true if any update value arguments are set for task values
+    pub fn has_task_update_values(&self) -> bool {
+        self.name.is_some()
+            || self.item_priority.is_some()
+            || self.start_time.is_some()
+            || self.end_time.is_some()
+            || self.notes.is_some()
+            || self.repeat.is_some()
+    }
+
+    /// Returns true if any update value arguments are set for project values
+    #[allow(dead_code)]
+    pub fn has_project_update_values(&self) -> bool {
+        self.name.is_some()
+            || self.item_priority.is_some()
+            || self.start_time.is_some()
+            || self.end_time.is_some()
+            || self.notes.is_some()
+    }
 }
 
 #[derive(Args)]
@@ -132,4 +186,42 @@ pub struct CheckArgs {
     /// Mark task as incomplete
     #[arg(short, long)]
     pub incomplete: bool,
+}
+
+/// CLI argument for a string value or Null
+pub enum NullableString {
+    Some(String),
+    Null,
+}
+
+impl NullableString {
+    /// Map the value of NullableString to another value if it is Some
+    pub fn map(self, f: impl FnOnce(String) -> String) -> Self {
+        match self {
+            Self::Some(value) => Self::Some(f(value)),
+            Self::Null => Self::Null,
+        }
+    }
+}
+
+impl Clone for NullableString {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Some(value) => Self::Some(value.to_string()),
+            Self::Null => Self::Null,
+        }
+    }
+}
+
+impl std::str::FromStr for NullableString {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_lowercase();
+        if s == "null" {
+            Ok(Self::Null)
+        } else {
+            Ok(Self::Some(s.to_string()))
+        }
+    }
 }
