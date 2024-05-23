@@ -153,9 +153,14 @@ fn handle_search(
 fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
         let (task_id, task_name) = commands::create_task(args, app)?;
-        Ok(Some(format!("Created task {task_name} with id {task_id}")))
+        Ok(Some(format!(
+            "Created task '{task_name}' with id '{task_id}'"
+        )))
     } else {
-        Err(Into::into("project adding not implemented"))
+        let (project_id, project_name) = commands::create_project(args, app)?;
+        Ok(Some(format!(
+            "Created project '{project_name}' with id '{project_id}'"
+        )))
     }
 }
 
