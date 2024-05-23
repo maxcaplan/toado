@@ -53,9 +53,9 @@ pub fn format_task(task: toado::Task) -> String {
     }
 
     // Push projects
-    if let Some(projects) = task.projects {
-        lines.push(format!("Projects: {}", projects.join(", ")));
-    }
+    // if let Some(projects) = task.projects {
+    //     lines.push(format!("Projects: {}", projects.join(", ")));
+    // }
 
     // Push notes
     if let Some(notes) = task.notes {

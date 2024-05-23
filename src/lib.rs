@@ -1,8 +1,11 @@
+use queries::AddProjectQuery;
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
 };
-use std::{collections::HashMap, error, fmt, path::Path, usize};
+use std::{error, fmt, path::Path, usize};
+
+use crate::queries::AddTaskQuery;
 
 pub mod queries;
 
@@ -54,7 +57,7 @@ impl Server {
             CREATE TABLE IF NOT EXISTS {}(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
-                start_time TEXT NOT NULL,
+                start_time TEXT,
                 end_time TEXT,
                 notes TEXT
             );
@@ -80,40 +83,16 @@ impl Server {
     ///
     /// Will return an error if execution of the sql statment fails
     pub fn add_task(&self, args: AddTaskArgs) -> Result<i64, Error> {
-        let mut map: HashMap<&str, String> = HashMap::from([
-            ("name", args.name),
-            ("priority", args.priority.to_string()),
-            ("status", u32::from(args.status).to_string()),
-        ]);
-
-        if let Some(start_time) = args.start_time {
-            map.insert("start_time", start_time);
-        }
-
-        if let Some(end_time) = args.end_time {
-            map.insert("end_time", end_time);
-        }
-
-        if let Some(repeat) = args.repeat {
-            map.insert("repeat", repeat);
-        }
-
-        if let Some(notes) = args.notes {
-            map.insert("repeate", notes);
-        }
-
-        let (cols, vals): (Vec<&str>, Vec<String>) = map
-            .into_iter()
-            .map(|(key, val)| (key, format!("'{}'", val.trim()))) // Surrond values with single quotes (ex: 'val')
-            .unzip();
-
-        let sql_string = format!(
-            "INSERT INTO tasks({}) VALUES({})",
-            cols.join(", "),
-            vals.join(", ")
+        let query = AddTaskQuery::new(
+            args.name,
+            args.priority,
+            args.start_time,
+            args.end_time,
+            args.repeat,
+            args.notes,
         );
 
-        self.connection.execute(&sql_string, ())?;
+        self.connection.execute(&query.to_string(), ())?;
 
         Ok(self.connection.last_insert_rowid())
     }
@@ -195,6 +174,20 @@ impl Server {
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
     }
 
+    /// Adds a new project to the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if execution of the query fails
+    pub fn add_project(&self, args: AddProjectArgs) -> Result<i64, Error> {
+        // Create query
+        let query = AddProjectQuery::new(args.name, args.start_time, args.end_time, args.notes);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return id of inserted row
+        Ok(self.connection.last_insert_rowid())
+    }
+
     /// Returns the total number of rows in a given table.
     ///
     /// # Errors:
@@ -233,7 +226,7 @@ impl fmt::Display for Tables {
     }
 }
 
-// Task row data
+/// Task row data
 pub struct Task {
     pub id: Option<i64>,
     /// Name of the task
@@ -251,7 +244,7 @@ pub struct Task {
     /// Notes for the task
     pub notes: Option<String>,
     /// List of projects the task is associate with
-    pub projects: Option<Vec<String>>,
+    pub projects: Option<Vec<Project>>,
 }
 
 impl Clone for Task {
@@ -272,19 +265,49 @@ impl Clone for Task {
 
 /// Arguments for adding a task to the database
 pub struct AddTaskArgs {
-    /// Name of the task
     pub name: String,
-    /// Priority value for task, higher is more important
     pub priority: u64,
-    /// Completion status of task
     pub status: ItemStatus,
-    /// Start time of the task in ISO 8601 format
     pub start_time: Option<String>,
-    /// End time of the task in ISO 8601 format
     pub end_time: Option<String>,
-    /// Determins whether and how the task repeats
     pub repeat: Option<String>,
-    /// Notes for the task
+    pub notes: Option<String>,
+}
+
+/// Project row data
+pub struct Project {
+    /// Id of project
+    pub id: Option<i64>,
+    /// Name of project
+    pub name: Option<String>,
+    /// Start time of the project in ISO 8601 format
+    pub start_time: Option<String>,
+    /// End time of the project in ISO 8601 format
+    pub end_time: Option<String>,
+    /// Notes for the project
+    pub notes: Option<String>,
+    /// Tasks assigned to the project
+    pub tasks: Option<Vec<Task>>,
+}
+
+impl Clone for Project {
+    fn clone(&self) -> Self {
+        Project {
+            id: self.id,
+            name: self.name.clone(),
+            start_time: self.start_time.clone(),
+            end_time: self.end_time.clone(),
+            notes: self.notes.clone(),
+            tasks: self.tasks.clone(),
+        }
+    }
+}
+
+/// Arguments for adding project to database
+pub struct AddProjectArgs {
+    pub name: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
     pub notes: Option<String>,
 }
 
