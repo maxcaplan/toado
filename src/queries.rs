@@ -1,10 +1,11 @@
 //! Database query utilites
 
-use crate::Tables;
 use std::fmt;
 
-pub use tasks::{SelectTasksQuery, UpdateTaskCols, UpdateTaskQuery};
+pub use projects::*;
+pub use tasks::*;
 
+mod projects;
 mod tasks;
 
 /// Columns to use in query
@@ -142,8 +143,47 @@ pub enum RowLimit {
     All,
 }
 
+pub struct KeyValuePairs<'a>(Vec<(&'a str, String)>);
+
+impl<'a> KeyValuePairs<'a> {
+    /// Push a key value pair to a vector of pairs if value is Some
+    fn push_pairs_if_some(&mut self, key: &'a str, value: Option<String>) {
+        if let Some(value) = value {
+            self.0.push((key, value))
+        }
+    }
+}
+
+/// Base database query trait
+trait Query: fmt::Display {
+    fn query_table(&self) -> crate::Tables;
+}
+
+/// Database addition query supertrait
+trait AddQuery: Query + fmt::Display {
+    /// Vector of key value pairs for query (ie. ("name", "lorem ipsum"))
+    fn key_value_pairs(&self) -> KeyValuePairs;
+
+    /// Returns keys and values as seperate list strings
+    fn get_key_value_strings(&self) -> (String, String) {
+        let (keys, values): (Vec<&str>, Vec<String>) = self.key_value_pairs().0.into_iter().unzip();
+        let values: Vec<String> = values.into_iter().map(|v| quote_string(&v)).collect(); // Add quotes to
+                                                                                          // values
+        (keys.join(", "), values.join(", "))
+    }
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let (keys, values) = self.get_key_value_strings();
+        format!(
+            "INSERT INTO {}({keys}) VALUES({values});",
+            self.query_table()
+        )
+    }
+}
+
 /// Functionality for adding sql query string parameters
-trait Query {
+trait QueryFilters {
     /// Takes an existing query string and appends condition, order, limit, and offset
     fn build_query_string(
         mut query_string: String,
@@ -254,4 +294,9 @@ where
             }
         )
     }
+}
+
+/// Surronds input str with single quote
+fn quote_string(str: &str) -> String {
+    format!("'{str}'")
 }

@@ -1,6 +1,65 @@
-use super::{OrderBy, OrderDir, Query, QueryCols, RowLimit, UpdateAction};
+use super::*;
 use crate::Tables;
 use std::fmt;
+
+/// Database query for adding a new task
+pub struct AddTaskQuery {
+    name: String,
+    priority: u64,
+    start_time: Option<String>,
+    end_time: Option<String>,
+    repeat: Option<String>,
+    notes: Option<String>,
+}
+
+impl AddTaskQuery {
+    pub fn new(
+        name: String,
+        priority: u64,
+        start_time: Option<String>,
+        end_time: Option<String>,
+        repeat: Option<String>,
+        notes: Option<String>,
+    ) -> Self {
+        Self {
+            name,
+            priority,
+            start_time,
+            end_time,
+            repeat,
+            notes,
+        }
+    }
+}
+
+impl Query for AddTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::Tasks
+    }
+}
+
+impl AddQuery for AddTaskQuery {
+    fn key_value_pairs(&self) -> KeyValuePairs {
+        let mut pairs = KeyValuePairs(vec![
+            ("name", self.name.clone()),
+            ("priority", self.priority.to_string()),
+            ("status", crate::ItemStatus::Incomplete.to_string()),
+        ]);
+
+        pairs.push_pairs_if_some("start_time", self.start_time.clone());
+        pairs.push_pairs_if_some("end_time", self.end_time.clone());
+        pairs.push_pairs_if_some("repeat", self.repeat.clone());
+        pairs.push_pairs_if_some("notes", self.notes.clone());
+
+        pairs
+    }
+}
+
+impl fmt::Display for AddTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
 
 /// Data struct for updating task columns
 pub struct UpdateTaskCols {
@@ -122,7 +181,7 @@ impl<'a> SelectTasksQuery<'a> {
     }
 }
 
-impl Query for SelectTasksQuery<'_> {}
+impl QueryFilters for SelectTasksQuery<'_> {}
 
 impl fmt::Display for SelectTasksQuery<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -152,7 +211,7 @@ impl UpdateTaskQuery {
     }
 }
 
-impl Query for UpdateTaskQuery {}
+impl QueryFilters for UpdateTaskQuery {}
 
 impl fmt::Display for UpdateTaskQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
