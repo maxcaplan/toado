@@ -1,4 +1,4 @@
-use queries::AddProjectQuery;
+use queries::{AddProjectQuery, SelectProjectsQuery};
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
@@ -143,17 +143,20 @@ impl Server {
     pub fn select_tasks(
         &self,
         cols: QueryCols,
-        condtion: Option<String>,
+        condition: Option<String>,
         order_by: Option<OrderBy>,
         order_dir: Option<OrderDir>,
         limit: Option<RowLimit>,
         offset: Option<usize>,
     ) -> Result<Vec<Task>, Error> {
-        let mut statment = self.connection.prepare(
-            &SelectTasksQuery::new(cols, condtion, order_by, order_dir, limit, offset).to_string(),
-        )?;
+        // Create query
+        let query = SelectTasksQuery::new(cols, condition, order_by, order_dir, limit, offset);
+        // Prepare query as statment
+        let mut statment = self.connection.prepare(&query.to_string())?;
 
+        // Map results from statment to data type
         let rows = statment.query_map((), |row| {
+            // Convert status from i64 if value returned from query
             let status = match row.get::<&str, i64>("status") {
                 Ok(value) => Some(ItemStatus::from(value)),
                 Err(_) => None,
@@ -171,6 +174,7 @@ impl Server {
             })
         })?;
 
+        // Remove all empty rows, collect as vector of data and return
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
     }
 
@@ -186,6 +190,36 @@ impl Server {
         self.connection.execute(&query.to_string(), ())?;
         // Return id of inserted row
         Ok(self.connection.last_insert_rowid())
+    }
+
+    pub fn select_project(
+        &self,
+        cols: QueryCols,
+        condition: Option<String>,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
+        limit: Option<RowLimit>,
+        offset: Option<usize>,
+    ) -> Result<Vec<Project>, Error> {
+        // Create query
+        let query = SelectProjectsQuery::new(cols, condition, order_by, order_dir, limit, offset);
+        // Prepare query as statment
+        let mut statment = self.connection.prepare(&query.to_string())?;
+
+        // Map results from statment to data type
+        let rows = statment.query_map((), |row| {
+            Ok(Project {
+                id: row.get("id").ok(),
+                name: row.get("name").ok(),
+                start_time: row.get("start_time").ok(),
+                end_time: row.get("end_time").ok(),
+                notes: row.get("notes").ok(),
+                tasks: None,
+            })
+        })?;
+
+        // Remove all empty rows, collect as vector of data and return
+        Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Project>>())
     }
 
     /// Returns the total number of rows in a given table.

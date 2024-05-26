@@ -8,6 +8,115 @@ pub use tasks::*;
 mod projects;
 mod tasks;
 
+/// Base database query trait
+trait Query: fmt::Display {
+    fn query_table(&self) -> crate::Tables;
+}
+
+/// Database addition query supertrait
+trait AddQuery: Query + fmt::Display {
+    /// Vector of key value pairs for query (ie. ("name", "lorem ipsum"))
+    fn key_value_pairs(&self) -> KeyValuePairs;
+
+    /// Returns keys and values as seperate list strings
+    fn get_key_value_strings(&self) -> (String, String) {
+        let (keys, values): (Vec<&str>, Vec<String>) = self.key_value_pairs().0.into_iter().unzip();
+        let values: Vec<String> = values.into_iter().map(|v| quote_string(&v)).collect(); // Add quotes to
+                                                                                          // values
+        (keys.join(", "), values.join(", "))
+    }
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let (keys, values) = self.get_key_value_strings();
+        format!(
+            "INSERT INTO {}({keys}) VALUES({values});",
+            self.query_table()
+        )
+    }
+}
+
+/// Select query filters tuple type
+type SelectFilters<'a> = (
+    &'a Option<String>,
+    &'a Option<OrderBy>,
+    &'a Option<OrderDir>,
+    &'a Option<RowLimit>,
+    &'a Option<usize>,
+);
+
+/// Database select query trait
+trait SelectQuery<'a>: Query + fmt::Display {
+    /// Get query filter values
+    fn query_filters(&self) -> SelectFilters;
+
+    fn select_cols(&self) -> &QueryCols<'a>;
+
+    /// Appends selection filters to a query string
+    fn append_filters(&self, mut query_string: String) -> String {
+        let (condition, order_by, order_dir, limit, offset) = self.query_filters();
+
+        //
+        // Query Conditions
+        //
+        if let Some(condition) = condition {
+            // If select condtions provided, add to query string
+            query_string.push_str(&format!(" WHERE {}", condition));
+        }
+
+        //
+        // Query Order
+        //
+
+        // Default order by priority
+        let order_by = order_by.unwrap_or(OrderBy::Priority);
+
+        query_string.push_str(&format!(
+            " ORDER BY {} {}",
+            order_by,
+            match order_dir {
+                // Set order direction if provided, else use defaults
+                Some(dir) => dir,
+                None => match order_by {
+                    OrderBy::Priority => &OrderDir::Desc,
+                    _ => &OrderDir::Asc,
+                },
+            }
+        ));
+
+        //
+        // Query Limit
+        //
+        match limit {
+            Some(RowLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
+            Some(RowLimit::All) => {}
+            None => query_string.push_str(" LIMIT 10"),
+        }
+
+        //
+        // Query Offset
+        //
+        if limit.is_none()
+            || limit
+                .as_ref()
+                .is_some_and(|limit| !matches!(limit, RowLimit::All))
+        {
+            if let Some(offset) = offset {
+                query_string.push_str(&format!(" OFFSET {offset}"))
+            }
+        }
+
+        query_string.push(';');
+        query_string
+    }
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let query_string = format!("SELECT {} FROM {}", self.select_cols(), self.query_table());
+        self.append_filters(query_string)
+    }
+}
+
 /// Columns to use in query
 pub enum QueryCols<'a> {
     /// All columns
@@ -151,99 +260,6 @@ impl<'a> KeyValuePairs<'a> {
         if let Some(value) = value {
             self.0.push((key, value))
         }
-    }
-}
-
-/// Base database query trait
-trait Query: fmt::Display {
-    fn query_table(&self) -> crate::Tables;
-}
-
-/// Database addition query supertrait
-trait AddQuery: Query + fmt::Display {
-    /// Vector of key value pairs for query (ie. ("name", "lorem ipsum"))
-    fn key_value_pairs(&self) -> KeyValuePairs;
-
-    /// Returns keys and values as seperate list strings
-    fn get_key_value_strings(&self) -> (String, String) {
-        let (keys, values): (Vec<&str>, Vec<String>) = self.key_value_pairs().0.into_iter().unzip();
-        let values: Vec<String> = values.into_iter().map(|v| quote_string(&v)).collect(); // Add quotes to
-                                                                                          // values
-        (keys.join(", "), values.join(", "))
-    }
-
-    /// Creates a query string from struct data
-    fn build_query_string(&self) -> String {
-        let (keys, values) = self.get_key_value_strings();
-        format!(
-            "INSERT INTO {}({keys}) VALUES({values});",
-            self.query_table()
-        )
-    }
-}
-
-/// Functionality for adding sql query string parameters
-trait QueryFilters {
-    /// Takes an existing query string and appends condition, order, limit, and offset
-    fn build_query_string(
-        mut query_string: String,
-        condition: &Option<String>,
-        order_by: &Option<OrderBy>,
-        order_dir: &Option<OrderDir>,
-        limit: &Option<RowLimit>,
-        offset: &Option<usize>,
-    ) -> String {
-        //
-        // Query Conditions
-        //
-        if let Some(condition) = condition {
-            // If select condtions provided, add to query string
-            query_string.push_str(&format!(" WHERE {}", condition));
-        }
-
-        //
-        // Query Order
-        //
-
-        // Default order by priority
-        let order_by = order_by.unwrap_or(OrderBy::Priority);
-
-        query_string.push_str(&format!(
-            " ORDER BY {} {}",
-            order_by,
-            match order_dir {
-                // Set order direction if provided, else use defaults
-                Some(dir) => dir,
-                None => match order_by {
-                    OrderBy::Priority => &OrderDir::Desc,
-                    _ => &OrderDir::Asc,
-                },
-            }
-        ));
-
-        //
-        // Query Limit
-        //
-        match limit {
-            Some(RowLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
-            Some(RowLimit::All) => {}
-            None => query_string.push_str(" LIMIT 10"),
-        }
-
-        //
-        // Query Offset
-        //
-        if limit.is_none()
-            || limit
-                .as_ref()
-                .is_some_and(|limit| !matches!(limit, RowLimit::All))
-        {
-            if let Some(offset) = offset {
-                query_string.push_str(&format!(" OFFSET {offset}"))
-            }
-        }
-
-        query_string
     }
 }
 

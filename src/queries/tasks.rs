@@ -2,6 +2,10 @@ use super::*;
 use crate::Tables;
 use std::fmt;
 
+///
+/// Add query
+///
+
 /// Database query for adding a new task
 pub struct AddTaskQuery {
     name: String,
@@ -58,6 +62,39 @@ impl AddQuery for AddTaskQuery {
 impl fmt::Display for AddTaskQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.build_query_string())
+    }
+}
+
+///
+/// Update Query
+///
+
+/// Database query struct for task update queries
+pub struct UpdateTaskQuery {
+    update: UpdateTaskCols,
+    condition: Option<String>,
+}
+
+impl UpdateTaskQuery {
+    pub fn new(update: UpdateTaskCols, condition: Option<String>) -> Self {
+        UpdateTaskQuery { update, condition }
+    }
+}
+
+impl fmt::Display for UpdateTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Create basic update query string
+        let mut query_string = format!("UPDATE {} SET {}", Tables::Tasks, self.update);
+
+        // Append query conditions
+        if let Some(condtition) = &self.condition {
+            query_string.push_str(&format!(" WHERE {condtition}"));
+        }
+
+        // End query string
+        query_string.push(';');
+
+        write!(f, "{query_string};")
     }
 }
 
@@ -151,6 +188,10 @@ impl fmt::Display for UpdateTaskCols {
     }
 }
 
+///
+/// Select Query
+///
+
 /// Task select query struct
 pub struct SelectTasksQuery<'a> {
     cols: QueryCols<'a>,
@@ -181,51 +222,30 @@ impl<'a> SelectTasksQuery<'a> {
     }
 }
 
-impl QueryFilters for SelectTasksQuery<'_> {}
+impl Query for SelectTasksQuery<'_> {
+    fn query_table(&self) -> crate::Tables {
+        crate::Tables::Tasks
+    }
+}
 
-impl fmt::Display for SelectTasksQuery<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic select query string
-        let query_string = Self::build_query_string(
-            format!("SELECT {} FROM {}", self.cols, Tables::Tasks),
+impl<'a> SelectQuery<'a> for SelectTasksQuery<'a> {
+    fn query_filters(&self) -> SelectFilters {
+        (
             &self.condition,
             &self.order_by,
             &self.order_dir,
             &self.limit,
             &self.offset,
-        );
+        )
+    }
 
-        write!(f, "{query_string};")
+    fn select_cols(&self) -> &QueryCols<'a> {
+        &self.cols
     }
 }
 
-/// Database query struct for task update queries
-pub struct UpdateTaskQuery {
-    update: UpdateTaskCols,
-    condition: Option<String>,
-}
-
-impl UpdateTaskQuery {
-    pub fn new(update: UpdateTaskCols, condition: Option<String>) -> Self {
-        UpdateTaskQuery { update, condition }
-    }
-}
-
-impl QueryFilters for UpdateTaskQuery {}
-
-impl fmt::Display for UpdateTaskQuery {
+impl fmt::Display for SelectTasksQuery<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic update query string
-        let mut query_string = format!("UPDATE {} SET {}", Tables::Tasks, self.update);
-
-        // Append query conditions
-        if let Some(condtition) = &self.condition {
-            query_string.push_str(&format!(" WHERE {condtition}"));
-        }
-
-        // End query string
-        query_string.push(';');
-
-        write!(f, "{query_string};")
+        write!(f, "{}", self.build_query_string())
     }
 }
