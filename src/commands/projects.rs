@@ -59,6 +59,95 @@ pub fn create_project(
     Ok((id, name))
 }
 
+/// Updates a project in a toado application. Either updates the project with cli argument values
+/// if suplied, or prompts the user for update values
+///
+/// # Errors
+///
+/// Will return an error if user input fails, or if project updating fails
+pub fn update_project(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, toado::Error> {
+    let theme = dialoguer::theme::ColorfulTheme::default();
+
+    let search_term = option_or_input(
+        args.term.clone(),
+        dialoguer::Input::with_theme(&theme).with_prompt("Project name"),
+    )?;
+
+    let project = prompt_project_selection(
+        &app,
+        search_term,
+        toado::QueryCols::Some(vec!["id", "name", "start_time", "end_time"]),
+        &theme,
+    )?;
+
+    // Get selected project id
+    let project_id = match project.id {
+        Some(id) => id,
+        None => return Err(Into::into("project id should exist")),
+    };
+
+    let condition = toado::QueryConditions::Equal {
+        col: "id",
+        value: project_id,
+    }
+    .to_string();
+
+    let (name, start_time, end_time, notes) = if args.has_project_update_values() {
+        // If update values are set by command arguments, use those values
+        (
+            toado::UpdateAction::from(args.name),
+            nullable_into_update_action(args.start_time),
+            nullable_into_update_action(args.end_time),
+            nullable_into_update_action(args.notes),
+        )
+    } else {
+        // Else, prompt user for update values
+
+        // Get current project values
+        let current_name = match project.name {
+            Some(value) => value,
+            None => return Err(Into::into("project name should exist")),
+        };
+        let current_start_time = project.start_time.unwrap_or("".to_string());
+        let current_end_time = project.end_time.unwrap_or("".to_string());
+        let current_notes = project.notes.unwrap_or("".to_string());
+
+        // Get user input for update values
+        let name: String = dialoguer::Input::with_theme(&theme)
+            .with_prompt("Name")
+            .validate_with(|input: &String| validate_name(input))
+            .with_initial_text(current_name)
+            .interact_text()?;
+
+        let start_time: String = dialoguer::Input::with_theme(&theme)
+            .with_prompt("Start Time (optional)")
+            .with_initial_text(current_start_time)
+            .allow_empty(true)
+            .interact_text()?;
+
+        let end_time: String = dialoguer::Input::with_theme(&theme)
+            .with_prompt("End Time (optional)")
+            .with_initial_text(current_end_time)
+            .allow_empty(true)
+            .interact_text()?;
+
+        let notes: String = dialoguer::Input::with_theme(&theme)
+            .with_prompt("Notes (optional)")
+            .with_initial_text(current_notes)
+            .allow_empty(true)
+            .interact_text()?;
+
+        (
+            toado::UpdateAction::Some(name),
+            toado::UpdateAction::from(start_time),
+            toado::UpdateAction::from(end_time),
+            toado::UpdateAction::from(notes),
+        )
+    };
+
+    app.update_project(Some(condition), name, start_time, end_time, notes)
+}
+
 pub fn delete_project(
     args: flags::DeleteArgs,
     app: toado::Server,

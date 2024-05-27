@@ -194,16 +194,6 @@ pub enum NullableString {
     Null,
 }
 
-impl NullableString {
-    /// Map the value of NullableString to another value if it is Some
-    pub fn map(self, f: impl FnOnce(String) -> String) -> Self {
-        match self {
-            Self::Some(value) => Self::Some(f(value)),
-            Self::Null => Self::Null,
-        }
-    }
-}
-
 impl Clone for NullableString {
     fn clone(&self) -> Self {
         match self {

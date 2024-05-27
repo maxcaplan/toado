@@ -1,4 +1,6 @@
-use queries::{AddProjectQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery};
+use queries::{
+    AddProjectQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery, UpdateProjectQuery,
+};
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
@@ -121,11 +123,21 @@ impl Server {
     /// Will return an error if execution of the sql statment fails
     pub fn update_task(
         &self,
-        update_cols: UpdateTaskCols,
         condition: Option<String>,
+        args: UpdateTaskArgs,
     ) -> Result<u64, Error> {
         self.connection.execute(
-            &UpdateTaskQuery::new(update_cols, condition).to_string(),
+            &UpdateTaskQuery {
+                condition,
+                name: args.name,
+                priority: args.priority,
+                status: args.status,
+                start_time: args.start_time,
+                end_time: args.end_time,
+                repeat: args.repeat,
+                notes: args.notes,
+            }
+            .to_string(),
             (),
         )?;
 
@@ -187,6 +199,27 @@ impl Server {
         self.connection.execute(&query.to_string(), ())?;
         // Return id of inserted row
         Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Updates a project in the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the execution of the query fails
+    pub fn update_project(
+        &self,
+        condition: Option<String>,
+        name: UpdateAction<String>,
+        start_time: UpdateAction<String>,
+        end_time: UpdateAction<String>,
+        notes: UpdateAction<String>,
+    ) -> Result<u64, Error> {
+        // Create query
+        let query = UpdateProjectQuery::new(condition, name, start_time, end_time, notes);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of updated rows
+        Ok(self.connection.changes())
     }
 
     /// Deletes one or more projects from the application database. If condition is None, deletes
@@ -323,6 +356,31 @@ pub struct AddTaskArgs {
     pub end_time: Option<String>,
     pub repeat: Option<String>,
     pub notes: Option<String>,
+}
+
+/// Arguments for updating a task in the database
+pub struct UpdateTaskArgs {
+    pub name: UpdateAction<String>,
+    pub status: UpdateAction<ItemStatus>,
+    pub priority: UpdateAction<u64>,
+    pub start_time: UpdateAction<String>,
+    pub end_time: UpdateAction<String>,
+    pub repeat: UpdateAction<String>,
+    pub notes: UpdateAction<String>,
+}
+
+impl UpdateTaskArgs {
+    pub fn update_status(status: ItemStatus) -> Self {
+        UpdateTaskArgs {
+            name: UpdateAction::None,
+            priority: UpdateAction::None,
+            status: UpdateAction::Some(status),
+            start_time: UpdateAction::None,
+            end_time: UpdateAction::None,
+            repeat: UpdateAction::None,
+            notes: UpdateAction::None,
+        }
+    }
 }
 
 /// Project row data

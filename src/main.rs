@@ -195,12 +195,14 @@ fn handle_update(
     args: flags::UpdateArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    if args.task || !args.project {
-        let affected_rows = commands::update_task(args, app)?;
-        Ok(Some(format!("{affected_rows} row(s) updated")))
-    } else {
-        Err(Into::into("project updating is not implemented"))
-    }
+    Ok(Some(format!(
+        "{} row(s) updated",
+        if args.task || !args.project {
+            commands::update_task(args, app)?
+        } else {
+            commands::update_project(args, app)?
+        }
+    )))
 }
 
 /// Handle the list command

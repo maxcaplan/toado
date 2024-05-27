@@ -147,30 +147,16 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
         None => return Err(Into::into("task id should exist")),
     };
 
-    // surronds string with quotes
-    let quotes = |value: String| format!("'{value}'");
-
-    let update_cols: toado::UpdateTaskCols = {
+    let (name, priority, start_time, end_time, repeat, notes) = {
         if args.has_task_update_values() {
             // If update values are set by command arguments, use those values
-            fn nullable_into_update_action(
-                flag: Option<flags::NullableString>,
-            ) -> toado::UpdateAction<String> {
-                match flag {
-                    Some(flags::NullableString::Some(value)) => toado::UpdateAction::Some(value),
-                    Some(flags::NullableString::Null) => toado::UpdateAction::Null,
-                    None => toado::UpdateAction::None,
-                }
-            }
-
-            toado::UpdateTaskCols::new(
-                toado::UpdateAction::from(args.name.map(quotes)),
+            (
+                toado::UpdateAction::from(args.name),
                 toado::UpdateAction::from(args.item_priority),
-                toado::UpdateAction::None,
-                nullable_into_update_action(args.start_time.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.end_time.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.repeat.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.notes.map(|v| v.map(quotes))),
+                nullable_into_update_action(args.start_time),
+                nullable_into_update_action(args.end_time),
+                nullable_into_update_action(args.repeat),
+                nullable_into_update_action(args.notes),
             )
         } else {
             // Else, prompt user for update values
@@ -234,10 +220,9 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
                 }
             }
 
-            toado::UpdateTaskCols::new(
-                toado::UpdateAction::Some(quotes(name)),
+            (
+                toado::UpdateAction::Some(name),
                 toado::UpdateAction::Some(priority),
-                toado::UpdateAction::None,
                 string_to_update_action(start_time),
                 string_to_update_action(end_time),
                 string_to_update_action(repeat),
@@ -247,7 +232,6 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
     };
 
     app.update_task(
-        update_cols,
         Some(
             toado::QueryConditions::Equal {
                 col: "id",
@@ -255,6 +239,15 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
             }
             .to_string(),
         ),
+        toado::UpdateTaskArgs {
+            name,
+            priority,
+            status: toado::UpdateAction::None,
+            start_time,
+            end_time,
+            repeat,
+            notes,
+        },
     )
 }
 
@@ -369,7 +362,6 @@ pub fn check_task(
     };
 
     let affected_rows = app.update_task(
-        toado::UpdateTaskCols::status(new_status),
         Some(
             toado::QueryConditions::Equal {
                 col: "id",
@@ -377,6 +369,7 @@ pub fn check_task(
             }
             .to_string(),
         ),
+        toado::UpdateTaskArgs::update_status(new_status),
     )?;
 
     if affected_rows == 0 {

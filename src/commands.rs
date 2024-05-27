@@ -94,7 +94,7 @@ fn parse_list_args<'a>(
     } else if args.task || !args.project {
         toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
     } else {
-        toado::QueryCols::Some(Vec::from(["id", "name", "start_time"]))
+        toado::QueryCols::Some(Vec::from(["id", "name", "start_time", "end_time"]))
     };
 
     // Determin selection row limit
@@ -110,4 +110,13 @@ fn parse_list_args<'a>(
 fn list_footer(offset: Option<usize>, count: usize, total: usize) -> String {
     let offset = offset.unwrap_or(0);
     format!("\n{}-{} of {}", offset, offset + count, total)
+}
+
+/// Converts an optional nullable string into an update action
+fn nullable_into_update_action(flag: Option<flags::NullableString>) -> toado::UpdateAction<String> {
+    match flag {
+        Some(flags::NullableString::Some(value)) => toado::UpdateAction::Some(value),
+        Some(flags::NullableString::Null) => toado::UpdateAction::Null,
+        None => toado::UpdateAction::None,
+    }
 }
