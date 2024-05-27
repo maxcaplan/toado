@@ -1,6 +1,6 @@
 //! Database query utilites
 
-use std::fmt;
+use std::fmt::{self};
 
 pub use projects::*;
 pub use tasks::*;
@@ -33,6 +33,24 @@ trait AddQuery: Query + fmt::Display {
             "INSERT INTO {}({keys}) VALUES({values});",
             self.query_table()
         )
+    }
+}
+
+trait DeleteQuery: Query + fmt::Display {
+    /// Get the condition for selecting which row(s) to delete. If None, deletes all rows in table
+    fn condition(&self) -> &Option<String>;
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let mut query_string = format!("DELETE FROM {}", self.query_table());
+
+        if let Some(condition) = self.condition() {
+            query_string.push_str(&format!(" WHERE {condition};"))
+        } else {
+            query_string.push(';');
+        }
+
+        query_string
     }
 }
 

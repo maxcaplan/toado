@@ -1,5 +1,7 @@
 use std::fmt::{self};
 
+use crate::Tables;
+
 use super::*;
 
 //
@@ -32,7 +34,7 @@ impl AddProjectQuery {
 
 impl Query for AddProjectQuery {
     fn query_table(&self) -> crate::Tables {
-        crate::Tables::Projects
+        Tables::Projects
     }
 }
 
@@ -53,6 +55,38 @@ impl AddQuery for AddProjectQuery {
         pairs.push_pairs_if_some("notes", self.notes.clone());
 
         pairs
+    }
+}
+
+//
+// Delete Query
+//
+
+pub struct DeleteProjectQuery {
+    condition: Option<String>,
+}
+
+impl DeleteProjectQuery {
+    pub fn new(condition: Option<String>) -> Self {
+        Self { condition }
+    }
+}
+
+impl Query for DeleteProjectQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::Projects
+    }
+}
+
+impl DeleteQuery for DeleteProjectQuery {
+    fn condition(&self) -> &Option<String> {
+        &self.condition
+    }
+}
+
+impl fmt::Display for DeleteProjectQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
     }
 }
 

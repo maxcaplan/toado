@@ -59,6 +59,45 @@ pub fn create_project(
     Ok((id, name))
 }
 
+pub fn delete_project(
+    args: flags::DeleteArgs,
+    app: toado::Server,
+) -> Result<Option<i64>, toado::Error> {
+    let theme = dialoguer::theme::ColorfulTheme::default();
+
+    let search_term = option_or_input(
+        args.term,
+        dialoguer::Input::with_theme(&theme).with_prompt("Project name"),
+    )?;
+
+    let project = prompt_project_selection(
+        &app,
+        search_term,
+        toado::QueryCols::Some(vec!["id", "name", "start_time"]),
+        &theme,
+    )?;
+
+    // Get selected task id
+    let id = match project.id {
+        Some(id) => id,
+        None => return Err(Into::into("project id should exist")),
+    };
+
+    let affected_rows = app.delete_project(Some(
+        toado::QueryConditions::Equal {
+            col: "id",
+            value: id,
+        }
+        .to_string(),
+    ))?;
+
+    if affected_rows >= 1 {
+        Ok(Some(id))
+    } else {
+        Err(Into::into("no project deleted"))
+    }
+}
+
 /// Get a list of projects from a toado app server
 ///
 /// # Errors
@@ -86,4 +125,75 @@ pub fn list_projects(
     }
 
     Ok(Some(table_string))
+}
+
+//
+// Private Methods
+//
+
+/// Selects projects from an application database given a search term. If multiple projects match the
+/// term, prompts the user to select one of the matching projects and returns it. If one project matches
+/// inputed name, returns said project
+///
+/// # Errors
+///
+/// Will return an error if no projects match the search term
+fn prompt_project_selection(
+    app: &toado::Server,
+    search_term: String,
+    cols: toado::QueryCols,
+    theme: &dyn dialoguer::theme::Theme,
+) -> Result<toado::Project, toado::Error> {
+    let select_condition = match search_term.parse::<usize>() {
+        // If search term is number, select by id
+        Ok(num) => toado::QueryConditions::Equal {
+            col: "id",
+            value: num.to_string(),
+        },
+        // If search term is not number, select by name
+        Err(_) => toado::QueryConditions::Like {
+            col: "name",
+            value: format!("'%{search_term}%'"),
+        },
+    };
+
+    // Get tasks matching name argument
+    let mut projects = app.select_project(
+        // toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+        cols,
+        Some(select_condition.to_string()),
+        Some(toado::OrderBy::Name),
+        None,
+        Some(toado::RowLimit::All),
+        None,
+    )?;
+
+    // If no tasks match search term, return error
+    if projects.is_empty() {
+        return Err(Into::into(format!("no project matches {search_term}")));
+    }
+
+    if projects.len() == 1 {
+        Ok(projects.remove(0))
+    }
+    // If multiple tasks match name argument, prompt user to select one
+    else {
+        // Format matching tasks into vector of strings
+        let project_strings: Vec<String> =
+            formatting::format_project_list(projects.clone(), true, false, false)
+                .split('\n')
+                .map(|line| line.to_string())
+                .collect();
+
+        // Get task selection from user
+        match projects.get(
+            dialoguer::Select::with_theme(theme)
+                .with_prompt("Select project")
+                .items(&project_strings)
+                .interact()?,
+        ) {
+            Some(project) => Ok(project.clone()),
+            None => Err(Into::into("selected project should exist")),
+        }
+    }
 }

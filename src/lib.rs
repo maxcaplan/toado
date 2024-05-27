@@ -1,4 +1,4 @@
-use queries::{AddProjectQuery, SelectProjectsQuery};
+use queries::{AddProjectQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery};
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
@@ -97,21 +97,18 @@ impl Server {
         Ok(self.connection.last_insert_rowid())
     }
 
-    /// Delete tasks from the database. Deletes all tasks matching query is Some, if None deletes
+    /// Delete tasks from the database. Deletes all tasks matching query if is Some, if None deletes
     /// all tasks. Returns number of rows modified
     ///
     /// # Errors:
     ///
     /// Will return an error if execution of the sql statment fails
-    pub fn delete_task(&self, query: Option<String>) -> Result<u64, Error> {
-        let mut sql_string = String::from("DELETE FROM tasks");
-
-        if let Some(query) = query {
-            sql_string.push_str(&format!(" WHERE {query}"))
-        }
-        sql_string.push(';');
-
-        self.connection.execute(&sql_string, ())?;
+    pub fn delete_task(&self, condition: Option<String>) -> Result<u64, Error> {
+        // Create delete query
+        let query = DeleteTaskQuery::new(condition);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of rows deleted
         Ok(self.connection.changes())
     }
 
@@ -192,6 +189,26 @@ impl Server {
         Ok(self.connection.last_insert_rowid())
     }
 
+    /// Deletes one or more projects from the application database. If condition is None, deletes
+    /// all projects (scary)
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the sql statment fails to execute
+    pub fn delete_project(&self, condition: Option<String>) -> Result<u64, Error> {
+        // Create delete query
+        let query = DeleteProjectQuery::new(condition);
+        // Execure query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of deleted rows
+        Ok(self.connection.changes())
+    }
+
+    /// Selects projects from the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the sql statment fails to execute
     pub fn select_project(
         &self,
         cols: QueryCols,

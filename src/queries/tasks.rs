@@ -188,9 +188,41 @@ impl fmt::Display for UpdateTaskCols {
     }
 }
 
-///
-/// Select Query
-///
+//
+// Delete Query
+//
+
+pub struct DeleteTaskQuery {
+    condition: Option<String>,
+}
+
+impl DeleteTaskQuery {
+    pub fn new(condition: Option<String>) -> Self {
+        Self { condition }
+    }
+}
+
+impl Query for DeleteTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::Tasks
+    }
+}
+
+impl DeleteQuery for DeleteTaskQuery {
+    fn condition(&self) -> &Option<String> {
+        &self.condition
+    }
+}
+
+impl fmt::Display for DeleteTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
+
+//
+// Select Query
+//
 
 /// Task select query struct
 pub struct SelectTasksQuery<'a> {

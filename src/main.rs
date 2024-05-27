@@ -179,7 +179,10 @@ fn handle_delete(
             None => Ok(None),
         }
     } else {
-        Err(Into::into("project deletion not implemented"))
+        match commands::delete_project(args, app)? {
+            Some(id) => Ok(Some(format!("Deleted project with id {id}"))),
+            None => Ok(None),
+        }
     }
 }
 
