@@ -38,11 +38,12 @@ trait AddQuery: Query + fmt::Display {
 
 /// Select query filters tuple type
 type SelectFilters<'a> = (
-    &'a Option<String>,
-    &'a Option<OrderBy>,
-    &'a Option<OrderDir>,
-    &'a Option<RowLimit>,
-    &'a Option<usize>,
+    &'a Option<String>,   // Condition
+    &'a Option<OrderBy>,  // Order by col
+    &'a OrderBy,          // Default order by col
+    &'a Option<OrderDir>, // Order direction
+    &'a Option<RowLimit>, // Row limit
+    &'a Option<usize>,    // Row offset
 );
 
 /// Database select query trait
@@ -54,7 +55,8 @@ trait SelectQuery<'a>: Query + fmt::Display {
 
     /// Appends selection filters to a query string
     fn append_filters(&self, mut query_string: String) -> String {
-        let (condition, order_by, order_dir, limit, offset) = self.query_filters();
+        let (condition, order_by, order_by_default, order_dir, limit, offset) =
+            self.query_filters();
 
         //
         // Query Conditions
@@ -69,7 +71,7 @@ trait SelectQuery<'a>: Query + fmt::Display {
         //
 
         // Default order by priority
-        let order_by = order_by.unwrap_or(OrderBy::Priority);
+        let order_by = order_by.unwrap_or(*order_by_default);
 
         query_string.push_str(&format!(
             " ORDER BY {} {}",

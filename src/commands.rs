@@ -71,3 +71,43 @@ fn validate_name(input: &str) -> Result<(), String> {
         Ok(())
     }
 }
+
+/// Parse list command CLI arguments into their respecitve data types
+fn parse_list_args<'a>(
+    args: &flags::ListArgs,
+) -> (
+    toado::QueryCols<'a>,
+    Option<toado::OrderBy>,
+    Option<toado::OrderDir>,
+    Option<toado::RowLimit>,
+    Option<usize>,
+) {
+    let order_dir = match (args.asc, args.desc) {
+        (true, _) => Some(toado::OrderDir::Asc),
+        (false, true) => Some(toado::OrderDir::Desc),
+        (false, false) => None,
+    };
+
+    // Determin columns to select
+    let cols = if args.verbose {
+        toado::QueryCols::All
+    } else if args.task || !args.project {
+        toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
+    } else {
+        toado::QueryCols::Some(Vec::from(["id", "name", "start_time"]))
+    };
+
+    // Determin selection row limit
+    let limit = match (args.full, args.limit) {
+        (true, _) => Some(toado::RowLimit::All), // Select all
+        (false, Some(val)) => Some(toado::RowLimit::Limit(val)), // Select set number
+        _ => None,                               // Select default number
+    };
+
+    (cols, args.order_by, order_dir, limit, args.offset)
+}
+
+fn list_footer(offset: Option<usize>, count: usize, total: usize) -> String {
+    let offset = offset.unwrap_or(0);
+    format!("\n{}-{} of {}", offset, offset + count, total)
+}

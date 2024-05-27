@@ -207,9 +207,9 @@ fn handle_update(
 /// Will return an error if the task or project selection fails
 fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
-        Ok(commands::list_tasks(&args, app)?)
+        commands::list_tasks(args, app)
     } else {
-        Err(Into::into("task listing not implemented"))
+        commands::list_projects(args, app)
     }
 }
 

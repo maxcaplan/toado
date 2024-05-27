@@ -100,6 +100,7 @@ impl<'a> SelectQuery<'a> for SelectProjectsQuery<'a> {
         (
             &self.condition,
             &self.order_by,
+            &OrderBy::Name,
             &self.order_dir,
             &self.limit,
             &self.offset,

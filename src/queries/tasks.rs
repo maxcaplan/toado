@@ -233,6 +233,7 @@ impl<'a> SelectQuery<'a> for SelectTasksQuery<'a> {
         (
             &self.condition,
             &self.order_by,
+            &OrderBy::Priority,
             &self.order_dir,
             &self.limit,
             &self.offset,

@@ -310,32 +310,13 @@ pub fn search_tasks(
 ///
 /// Will return an error if selecting tasks from the server database fails
 pub fn list_tasks(
-    args: &flags::ListArgs,
+    args: flags::ListArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    // Determin order direction
-    let order_dir = match (args.asc, args.desc) {
-        (true, _) => Some(toado::OrderDir::Asc),
-        (false, true) => Some(toado::OrderDir::Desc),
-        (false, false) => None,
-    };
-
-    // Determin columns to select
-    let cols = if args.verbose {
-        toado::QueryCols::All
-    } else {
-        toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
-    };
-
-    // Determin selection row limit
-    let limit = match (args.full, args.limit) {
-        (true, _) => Some(toado::RowLimit::All), // Select all
-        (false, Some(val)) => Some(toado::RowLimit::Limit(val)), // Select set number
-        _ => None,                               // Select default number
-    };
+    let (cols, order_by, order_dir, limit, offset) = parse_list_args(&args);
 
     // Get tasks from application database
-    let tasks = app.select_tasks(cols, None, args.order_by, order_dir, limit, args.offset)?;
+    let tasks = app.select_tasks(cols, None, order_by, order_dir, limit, offset)?;
     let num_tasks = tasks.len();
 
     // Format tasks into a table string to display
@@ -343,13 +324,11 @@ pub fn list_tasks(
 
     // If not selecting all tasks, display number of tasks selected
     if !args.full {
-        let start_pos = args.offset.unwrap_or(0);
-        table_string.push_str(&format!(
-            "\n{}-{} of {}",
-            start_pos,
-            start_pos + num_tasks,
+        table_string.push_str(&list_footer(
+            offset,
+            num_tasks,
             app.get_table_row_count(toado::Tables::Tasks)?,
-        ))
+        ));
     }
 
     Ok(Some(table_string))

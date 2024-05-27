@@ -58,3 +58,32 @@ pub fn create_project(
 
     Ok((id, name))
 }
+
+/// Get a list of projects from a toado app server
+///
+/// # Errors
+///
+/// Will return an error if selecting projects from app database fails, or if getting row count of
+/// table in app database fails
+pub fn list_projects(
+    args: flags::ListArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    let (cols, order_by, order_dir, limit, offset) = parse_list_args(&args);
+
+    let projects = app.select_project(cols, None, order_by, order_dir, limit, offset)?;
+    let num_projects = projects.len();
+
+    let mut table_string = formatting::format_project_list(projects, true, false, args.verbose);
+
+    // If not selecting all projects, display number of tasks selected
+    if !args.full {
+        table_string.push_str(&list_footer(
+            offset,
+            num_projects,
+            app.get_table_row_count(toado::Tables::Projects)?,
+        ));
+    }
+
+    Ok(Some(table_string))
+}
