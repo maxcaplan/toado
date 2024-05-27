@@ -36,6 +36,27 @@ trait AddQuery: Query + fmt::Display {
     }
 }
 
+/// Database update query trait
+trait UpdateQuery: Query + fmt::Display {
+    type Action: fmt::Display;
+
+    fn condition(&self) -> Option<&str>;
+    fn update_cols(&self) -> UpdateCols<Self::Action>;
+
+    fn build_query_string(&self) -> String {
+        let mut query_string = format!("UPDATE {} SET {}", self.query_table(), self.update_cols());
+
+        if let Some(condition) = self.condition() {
+            query_string.push_str(&format!(" WHERE {condition};"));
+        } else {
+            query_string.push(';')
+        }
+
+        query_string
+    }
+}
+
+/// Database delete query trait
 trait DeleteQuery: Query + fmt::Display {
     /// Get the condition for selecting which row(s) to delete. If None, deletes all rows in table
     fn condition(&self) -> &Option<String>;
@@ -160,6 +181,7 @@ impl fmt::Display for QueryCols<'_> {
 }
 
 /// Update action for a database column
+#[derive(Clone, Copy)]
 pub enum UpdateAction<T>
 where
     T: fmt::Display,
@@ -176,6 +198,19 @@ impl<T> UpdateAction<T>
 where
     T: fmt::Display,
 {
+    /// Maps inner value T to U using mapping function F
+    fn map<U, F>(self, f: F) -> UpdateAction<U>
+    where
+        U: fmt::Display,
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Self::Some(value) => UpdateAction::Some(f(value)),
+            Self::Null => UpdateAction::Null,
+            Self::None => UpdateAction::None,
+        }
+    }
+
     fn map_from<U, F>(from: &UpdateAction<T>, f: F) -> UpdateAction<U>
     where
         U: fmt::Display,
@@ -196,7 +231,7 @@ where
     /// Avoid using this when the UpdateAction value is None
     fn to_statment(&self, col: &str) -> String {
         match &self {
-            Self::Some(value) => format!("{col} = {value}"),
+            Self::Some(value) => format!("{col} = '{value}'"),
             Self::Null => format!("{col} = NULL"),
             Self::None => "".to_string(),
         }
@@ -212,6 +247,37 @@ where
             Some(value) => Self::Some(value),
             None => Self::None,
         }
+    }
+}
+
+impl From<String> for UpdateAction<String> {
+    fn from(value: String) -> Self {
+        if value.is_empty() {
+            UpdateAction::Null
+        } else {
+            UpdateAction::Some(value)
+        }
+    }
+}
+
+/// Columns to update in an update query
+struct UpdateCols<'a, T>(Vec<(&'a str, UpdateAction<T>)>)
+where
+    T: fmt::Display;
+
+impl<T> fmt::Display for UpdateCols<'_, T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let actions: Vec<String> = self
+            .0
+            .iter()
+            .filter(|col| !col.1.is_none())
+            .map(|col| col.1.to_statment(col.0))
+            .collect();
+
+        write!(f, "{}", actions.join(", "))
     }
 }
 

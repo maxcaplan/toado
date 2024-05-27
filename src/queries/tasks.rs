@@ -47,7 +47,10 @@ impl AddQuery for AddTaskQuery {
         let mut pairs = KeyValuePairs(vec![
             ("name", self.name.clone()),
             ("priority", self.priority.to_string()),
-            ("status", crate::ItemStatus::Incomplete.to_string()),
+            (
+                "status",
+                u32::from(crate::ItemStatus::Incomplete).to_string(),
+            ),
         ]);
 
         pairs.push_pairs_if_some("start_time", self.start_time.clone());
@@ -71,30 +74,45 @@ impl fmt::Display for AddTaskQuery {
 
 /// Database query struct for task update queries
 pub struct UpdateTaskQuery {
-    update: UpdateTaskCols,
-    condition: Option<String>,
+    pub condition: Option<String>,
+    pub name: UpdateAction<String>,
+    pub priority: UpdateAction<u64>,
+    pub status: UpdateAction<crate::ItemStatus>,
+    pub start_time: UpdateAction<String>,
+    pub end_time: UpdateAction<String>,
+    pub repeat: UpdateAction<String>,
+    pub notes: UpdateAction<String>,
 }
 
-impl UpdateTaskQuery {
-    pub fn new(update: UpdateTaskCols, condition: Option<String>) -> Self {
-        UpdateTaskQuery { update, condition }
+impl Query for UpdateTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::Tasks
+    }
+}
+
+impl UpdateQuery for UpdateTaskQuery {
+    type Action = String;
+
+    fn condition(&self) -> Option<&str> {
+        self.condition.as_deref()
+    }
+
+    fn update_cols(&self) -> UpdateCols<Self::Action> {
+        UpdateCols(vec![
+            ("name", self.name.clone()),
+            ("priority", self.priority.map(|v| v.to_string())),
+            ("status", self.status.map(|v| u32::from(v).to_string())),
+            ("start_time", self.start_time.clone()),
+            ("end_time", self.end_time.clone()),
+            ("repeat", self.repeat.clone()),
+            ("notes", self.notes.clone()),
+        ])
     }
 }
 
 impl fmt::Display for UpdateTaskQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic update query string
-        let mut query_string = format!("UPDATE {} SET {}", Tables::Tasks, self.update);
-
-        // Append query conditions
-        if let Some(condtition) = &self.condition {
-            query_string.push_str(&format!(" WHERE {condtition}"));
-        }
-
-        // End query string
-        query_string.push(';');
-
-        write!(f, "{query_string};")
+        write!(f, "{}", self.build_query_string())
     }
 }
 

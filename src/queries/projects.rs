@@ -59,6 +59,65 @@ impl AddQuery for AddProjectQuery {
 }
 
 //
+// Update Query
+//
+
+pub struct UpdateProjectQuery {
+    condition: Option<String>,
+    name: UpdateAction<String>,
+    start_time: UpdateAction<String>,
+    end_time: UpdateAction<String>,
+    notes: UpdateAction<String>,
+}
+
+impl UpdateProjectQuery {
+    pub fn new(
+        condition: Option<String>,
+        name: UpdateAction<String>,
+        start_time: UpdateAction<String>,
+        end_time: UpdateAction<String>,
+        notes: UpdateAction<String>,
+    ) -> Self {
+        Self {
+            condition,
+            name,
+            start_time,
+            end_time,
+            notes,
+        }
+    }
+}
+
+impl Query for UpdateProjectQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::Projects
+    }
+}
+
+impl UpdateQuery for UpdateProjectQuery {
+    type Action = String;
+
+    fn condition(&self) -> Option<&str> {
+        self.condition.as_deref()
+    }
+
+    fn update_cols(&self) -> UpdateCols<Self::Action> {
+        UpdateCols(vec![
+            ("name", self.name.clone()),
+            ("start_time", self.start_time.clone()),
+            ("end_time", self.end_time.clone()),
+            ("notes", self.notes.clone()),
+        ])
+    }
+}
+
+impl fmt::Display for UpdateProjectQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
+
+//
 // Delete Query
 //
 
