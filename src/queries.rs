@@ -5,8 +5,14 @@ use std::fmt::{self};
 pub use projects::*;
 pub use tasks::*;
 
+use crate::Tables;
+
 mod projects;
 mod tasks;
+
+//
+// Query Structs
+//
 
 /// Base database query trait
 trait Query: fmt::Display {
@@ -155,6 +161,42 @@ trait SelectQuery<'a>: Query + fmt::Display {
     fn build_query_string(&self) -> String {
         let query_string = format!("SELECT {} FROM {}", self.select_cols(), self.query_table());
         self.append_filters(query_string)
+    }
+}
+
+/// Database query for assigning a task to a project
+pub struct AssignTaskQuery {
+    task_id: i64,
+    project_id: i64,
+}
+
+impl AssignTaskQuery {
+    pub fn new(task_id: i64, project_id: i64) -> Self {
+        Self {
+            task_id,
+            project_id,
+        }
+    }
+}
+
+impl Query for AssignTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::TaskAssignments
+    }
+}
+
+impl AddQuery for AssignTaskQuery {
+    fn key_value_pairs(&self) -> KeyValuePairs {
+        KeyValuePairs(vec![
+            ("task_id", self.task_id.to_string()),
+            ("project_id", self.project_id.to_string()),
+        ])
+    }
+}
+
+impl fmt::Display for AssignTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
     }
 }
 

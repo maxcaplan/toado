@@ -1,5 +1,6 @@
 use queries::{
-    AddProjectQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery, UpdateProjectQuery,
+    AddProjectQuery, AssignTaskQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery,
+    UpdateProjectQuery,
 };
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
@@ -270,6 +271,40 @@ impl Server {
 
         // Remove all empty rows, collect as vector of data and return
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Project>>())
+    }
+
+    /// Creates a new task assignment in application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn assign_task(&self, task_id: i64, project_id: i64) -> Result<i64, Error> {
+        // Create query string
+        let query_string = AssignTaskQuery::new(task_id, project_id).to_string();
+        // Execuet query
+        self.connection.execute(&query_string, ())?;
+        // Return new row id
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Batch creates new task assignments in application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn batch_assign_tasks(&self, assignments: Vec<(i64, i64)>) -> Result<Vec<i64>, Error> {
+        // Create query strings
+        let query_strings = assignments
+            .into_iter()
+            .map(|(task_id, project_id)| AssignTaskQuery::new(task_id, project_id).to_string());
+        // Execute query strings aggragating new row ids
+        query_strings
+            .into_iter()
+            .map(|query_string| {
+                self.connection.execute(&query_string, ())?;
+                Ok(self.connection.last_insert_rowid())
+            })
+            .collect::<Result<Vec<i64>, Error>>()
     }
 
     /// Returns the total number of rows in a given table.

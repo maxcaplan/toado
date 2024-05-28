@@ -124,6 +124,7 @@ fn handle_command(
         flags::Commands::Update(args) => handle_update(args, app)?,
         flags::Commands::Ls(args) => handle_ls(args, app)?,
         flags::Commands::Check(args) => handle_check(args, app)?,
+        flags::Commands::Assign(args) => handle_assign(args, app)?,
     };
 
     Ok(message)
@@ -232,4 +233,37 @@ fn handle_check(
         "Set '{task_name}' to {}",
         task_status.to_string().to_uppercase()
     )))
+}
+
+/// Handle the assign command
+///
+/// # Errors
+///
+/// Will return an error if assigning command fails
+fn handle_assign(
+    args: flags::AssignArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    let (pairs, status) = if !args.unassign {
+        // Assign task(s)
+        (
+            if !args.no_select {
+                commands::assign_multiple_tasks(args, app)?
+            } else {
+                vec![commands::assign_task(args, app)?]
+            },
+            "assigned",
+        )
+    } else {
+        // Unassign task(s)
+        todo!()
+    };
+
+    let message = pairs
+        .into_iter()
+        .map(|(task_name, project_name)| format!("'{task_name}' {status} to '{project_name}'"))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    Ok(Some(message))
 }
