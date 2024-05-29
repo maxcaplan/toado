@@ -1,6 +1,6 @@
 use queries::{
     AddProjectQuery, AssignTaskQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery,
-    UpdateProjectQuery,
+    UnassignTaskQuery, UpdateProjectQuery,
 };
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
@@ -69,7 +69,8 @@ impl Server {
                 task_id INTEGER NOT NULL,
                 project_id INTEGER NOT NULL,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(task_id, project_id)
             );
             COMMIT;",
             Tables::Tasks,
@@ -281,7 +282,7 @@ impl Server {
     pub fn assign_task(&self, task_id: i64, project_id: i64) -> Result<i64, Error> {
         // Create query string
         let query_string = AssignTaskQuery::new(task_id, project_id).to_string();
-        // Execuet query
+        // Execute query
         self.connection.execute(&query_string, ())?;
         // Return new row id
         Ok(self.connection.last_insert_rowid())
@@ -297,7 +298,7 @@ impl Server {
         let query_strings = assignments
             .into_iter()
             .map(|(task_id, project_id)| AssignTaskQuery::new(task_id, project_id).to_string());
-        // Execute query strings aggragating new row ids
+        // Execute query strings aggregating new row ids
         query_strings
             .into_iter()
             .map(|query_string| {
@@ -305,6 +306,48 @@ impl Server {
                 Ok(self.connection.last_insert_rowid())
             })
             .collect::<Result<Vec<i64>, Error>>()
+    }
+
+    /// Removes a task assignment from application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn unassign_task(&self, task_id: i64, project_id: i64) -> Result<u64, Error> {
+        // Create query string
+        let query_string = UnassignTaskQuery::new(task_id, project_id)
+            .to_string()
+            .to_string();
+        // Execute query
+        self.connection.execute(&query_string, ())?;
+        // Return number of affected rows
+        Ok(self.connection.changes())
+    }
+
+    /// Batch removes task assignments from application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn batch_unassign_tasks(&self, unassignments: Vec<(i64, i64)>) -> Result<usize, Error> {
+        // Create query strings
+        let query_strings = unassignments
+            .into_iter()
+            .map(|(task_id, project_id)| UnassignTaskQuery::new(task_id, project_id).to_string());
+        // Execute query strings aggregating number of changed rows
+        Ok(query_strings
+            .into_iter()
+            .filter_map(
+                |query_string| match self.connection.execute(&query_string, ()) {
+                    Ok(changed) => Some(changed),
+                    Err(e) => {
+                        eprintln!("{e}"); // TODO: Refactor errror handling: aggragate and return
+                                          // vector of errors
+                        None
+                    }
+                },
+            )
+            .sum())
     }
 
     /// Returns the total number of rows in a given table.

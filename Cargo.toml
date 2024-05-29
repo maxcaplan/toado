@@ -1,6 +1,6 @@
 [package]
 name = "toado"
-version = "0.9.4"
+version = "0.11.4"
 edition = "2021"
 description = "A simple interactive task and project manager for the command line"
 license = "MIT"

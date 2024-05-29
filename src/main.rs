@@ -244,7 +244,7 @@ fn handle_assign(
     args: flags::AssignArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    let (pairs, status) = if !args.unassign {
+    let (pairs, action) = if !args.unassign {
         // Assign task(s)
         (
             if !args.no_select {
@@ -252,16 +252,23 @@ fn handle_assign(
             } else {
                 vec![commands::assign_task(args, app)?]
             },
-            "assigned",
+            "assigned to",
         )
     } else {
         // Unassign task(s)
-        todo!()
+        (
+            if !args.no_select {
+                commands::unassign_multiple_tasks(args, app)?
+            } else {
+                vec![commands::unassign_task(args, app)?]
+            },
+            "unassigned from",
+        )
     };
 
     let message = pairs
         .into_iter()
-        .map(|(task_name, project_name)| format!("'{task_name}' {status} to '{project_name}'"))
+        .map(|(task_name, project_name)| format!("'{task_name}' {action} '{project_name}'"))
         .collect::<Vec<String>>()
         .join("\n");
 

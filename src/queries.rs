@@ -164,6 +164,10 @@ trait SelectQuery<'a>: Query + fmt::Display {
     }
 }
 
+//
+// Assign Query
+//
+
 /// Database query for assigning a task to a project
 pub struct AssignTaskQuery {
     task_id: i64,
@@ -199,6 +203,54 @@ impl fmt::Display for AssignTaskQuery {
         write!(f, "{}", self.build_query_string())
     }
 }
+
+//
+// Unassign Query
+//
+
+pub struct UnassignTaskQuery {
+    condition: Option<String>,
+}
+
+impl UnassignTaskQuery {
+    pub fn new(task_id: i64, project_id: i64) -> Self {
+        let condition = Some(format!(
+            "{} and {}",
+            QueryConditions::Equal {
+                col: "task_id",
+                value: &task_id
+            },
+            QueryConditions::Equal {
+                col: "project_id",
+                value: &project_id
+            }
+        ));
+
+        Self { condition }
+    }
+}
+
+impl Query for UnassignTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::TaskAssignments
+    }
+}
+
+impl DeleteQuery for UnassignTaskQuery {
+    fn condition(&self) -> &Option<String> {
+        &self.condition
+    }
+}
+
+impl fmt::Display for UnassignTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
+
+//
+// Utils
+//
 
 /// Columns to use in query
 pub enum QueryCols<'a> {
