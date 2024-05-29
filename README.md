@@ -1,10 +1,17 @@
 # Toado 🐸 📋
 
+![crates.io version](https://img.shields.io/crates/v/toado)
+
 A simple interactive task and project manager for the command line built in rust.
 
 # Installation
 
-Currently, toado can only be installed through rusts package manager cargo.
+Currently, toado is only available and tested for x86-64 Linux.
+You can download a precompiled binary from https://github.com/maxcaplan/toado/releases
+
+## Cargo
+
+Toado can also be installed through rusts package manager cargo.
 Install rust and cargo [here](https://www.rust-lang.org/tools/install).
 
 To install toado through cargo, run the following command:
@@ -30,8 +37,10 @@ Commands:
   search  Search for items
   add     Add a new item
   delete  Remove an item
+  update  Update an item
   ls      Display a list of items
   check   Complete a task
+  assign  Assigns a task to a project
   help    Print this message or the help of the given subcommand(s)
 
 Arguments:
