@@ -38,6 +38,8 @@ pub enum Commands {
     Ls(ListArgs),
     /// Complete a task
     Check(CheckArgs),
+    /// Assigns a task to a project
+    Assign(AssignArgs),
 }
 
 #[derive(Args)]
@@ -188,20 +190,44 @@ pub struct CheckArgs {
     pub incomplete: bool,
 }
 
+#[derive(Args)]
+pub struct AssignArgs {
+    /// Name or id of the task to assign
+    #[arg(conflicts_with = "task_term", group = "task_search")]
+    pub task: Option<String>,
+    /// Name or id of the project to assign
+    #[arg(conflicts_with = "project_term", group = "project_search")]
+    pub project: Option<String>,
+    /// Name or id of the task to assign
+    #[arg(
+        short,
+        long,
+        conflicts_with = "task",
+        value_name = "NAME|ID",
+        group = "task_search"
+    )]
+    pub task_term: Option<String>,
+    /// Name or id of the project to assign
+    #[arg(
+        short,
+        long,
+        conflicts_with = "project",
+        value_name = "NAME|ID",
+        group = "project_search"
+    )]
+    pub project_term: Option<String>,
+    /// Unassign task from project
+    #[arg(short, long)]
+    pub unassign: bool,
+    /// Don't prompt item selection
+    #[arg(short, long, requires = "task_search", requires = "project_search")]
+    pub no_select: bool,
+}
+
 /// CLI argument for a string value or Null
 pub enum NullableString {
     Some(String),
     Null,
-}
-
-impl NullableString {
-    /// Map the value of NullableString to another value if it is Some
-    pub fn map(self, f: impl FnOnce(String) -> String) -> Self {
-        match self {
-            Self::Some(value) => Self::Some(f(value)),
-            Self::Null => Self::Null,
-        }
-    }
 }
 
 impl Clone for NullableString {

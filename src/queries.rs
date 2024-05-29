@@ -1,7 +1,256 @@
 //! Database query utilites
 
+use std::fmt::{self};
+
+pub use projects::*;
+pub use tasks::*;
+
 use crate::Tables;
-use std::fmt;
+
+mod projects;
+mod tasks;
+
+//
+// Query Structs
+//
+
+/// Base database query trait
+trait Query: fmt::Display {
+    fn query_table(&self) -> crate::Tables;
+}
+
+/// Database addition query supertrait
+trait AddQuery: Query + fmt::Display {
+    /// Vector of key value pairs for query (ie. ("name", "lorem ipsum"))
+    fn key_value_pairs(&self) -> KeyValuePairs;
+
+    /// Returns keys and values as seperate list strings
+    fn get_key_value_strings(&self) -> (String, String) {
+        let (keys, values): (Vec<&str>, Vec<String>) = self.key_value_pairs().0.into_iter().unzip();
+        let values: Vec<String> = values.into_iter().map(|v| quote_string(&v)).collect(); // Add quotes to
+                                                                                          // values
+        (keys.join(", "), values.join(", "))
+    }
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let (keys, values) = self.get_key_value_strings();
+        format!(
+            "INSERT INTO {}({keys}) VALUES({values});",
+            self.query_table()
+        )
+    }
+}
+
+/// Database update query trait
+trait UpdateQuery: Query + fmt::Display {
+    type Action: fmt::Display;
+
+    fn condition(&self) -> Option<&str>;
+    fn update_cols(&self) -> UpdateCols<Self::Action>;
+
+    fn build_query_string(&self) -> String {
+        let mut query_string = format!("UPDATE {} SET {}", self.query_table(), self.update_cols());
+
+        if let Some(condition) = self.condition() {
+            query_string.push_str(&format!(" WHERE {condition};"));
+        } else {
+            query_string.push(';')
+        }
+
+        query_string
+    }
+}
+
+/// Database delete query trait
+trait DeleteQuery: Query + fmt::Display {
+    /// Get the condition for selecting which row(s) to delete. If None, deletes all rows in table
+    fn condition(&self) -> &Option<String>;
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let mut query_string = format!("DELETE FROM {}", self.query_table());
+
+        if let Some(condition) = self.condition() {
+            query_string.push_str(&format!(" WHERE {condition};"))
+        } else {
+            query_string.push(';');
+        }
+
+        query_string
+    }
+}
+
+/// Select query filters tuple type
+type SelectFilters<'a> = (
+    &'a Option<String>,   // Condition
+    &'a Option<OrderBy>,  // Order by col
+    &'a OrderBy,          // Default order by col
+    &'a Option<OrderDir>, // Order direction
+    &'a Option<RowLimit>, // Row limit
+    &'a Option<usize>,    // Row offset
+);
+
+/// Database select query trait
+trait SelectQuery<'a>: Query + fmt::Display {
+    /// Get query filter values
+    fn query_filters(&self) -> SelectFilters;
+
+    fn select_cols(&self) -> &QueryCols<'a>;
+
+    /// Appends selection filters to a query string
+    fn append_filters(&self, mut query_string: String) -> String {
+        let (condition, order_by, order_by_default, order_dir, limit, offset) =
+            self.query_filters();
+
+        //
+        // Query Conditions
+        //
+        if let Some(condition) = condition {
+            // If select condtions provided, add to query string
+            query_string.push_str(&format!(" WHERE {}", condition));
+        }
+
+        //
+        // Query Order
+        //
+
+        // Default order by priority
+        let order_by = order_by.unwrap_or(*order_by_default);
+
+        query_string.push_str(&format!(
+            " ORDER BY {} {}",
+            order_by,
+            match order_dir {
+                // Set order direction if provided, else use defaults
+                Some(dir) => dir,
+                None => match order_by {
+                    OrderBy::Priority => &OrderDir::Desc,
+                    _ => &OrderDir::Asc,
+                },
+            }
+        ));
+
+        //
+        // Query Limit
+        //
+        match limit {
+            Some(RowLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
+            Some(RowLimit::All) => {}
+            None => query_string.push_str(" LIMIT 10"),
+        }
+
+        //
+        // Query Offset
+        //
+        if limit.is_none()
+            || limit
+                .as_ref()
+                .is_some_and(|limit| !matches!(limit, RowLimit::All))
+        {
+            if let Some(offset) = offset {
+                query_string.push_str(&format!(" OFFSET {offset}"))
+            }
+        }
+
+        query_string.push(';');
+        query_string
+    }
+
+    /// Creates a query string from struct data
+    fn build_query_string(&self) -> String {
+        let query_string = format!("SELECT {} FROM {}", self.select_cols(), self.query_table());
+        self.append_filters(query_string)
+    }
+}
+
+//
+// Assign Query
+//
+
+/// Database query for assigning a task to a project
+pub struct AssignTaskQuery {
+    task_id: i64,
+    project_id: i64,
+}
+
+impl AssignTaskQuery {
+    pub fn new(task_id: i64, project_id: i64) -> Self {
+        Self {
+            task_id,
+            project_id,
+        }
+    }
+}
+
+impl Query for AssignTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::TaskAssignments
+    }
+}
+
+impl AddQuery for AssignTaskQuery {
+    fn key_value_pairs(&self) -> KeyValuePairs {
+        KeyValuePairs(vec![
+            ("task_id", self.task_id.to_string()),
+            ("project_id", self.project_id.to_string()),
+        ])
+    }
+}
+
+impl fmt::Display for AssignTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
+
+//
+// Unassign Query
+//
+
+pub struct UnassignTaskQuery {
+    condition: Option<String>,
+}
+
+impl UnassignTaskQuery {
+    pub fn new(task_id: i64, project_id: i64) -> Self {
+        let condition = Some(format!(
+            "{} and {}",
+            QueryConditions::Equal {
+                col: "task_id",
+                value: &task_id
+            },
+            QueryConditions::Equal {
+                col: "project_id",
+                value: &project_id
+            }
+        ));
+
+        Self { condition }
+    }
+}
+
+impl Query for UnassignTaskQuery {
+    fn query_table(&self) -> crate::Tables {
+        Tables::TaskAssignments
+    }
+}
+
+impl DeleteQuery for UnassignTaskQuery {
+    fn condition(&self) -> &Option<String> {
+        &self.condition
+    }
+}
+
+impl fmt::Display for UnassignTaskQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.build_query_string())
+    }
+}
+
+//
+// Utils
+//
 
 /// Columns to use in query
 pub enum QueryCols<'a> {
@@ -26,6 +275,7 @@ impl fmt::Display for QueryCols<'_> {
 }
 
 /// Update action for a database column
+#[derive(Clone, Copy)]
 pub enum UpdateAction<T>
 where
     T: fmt::Display,
@@ -42,6 +292,19 @@ impl<T> UpdateAction<T>
 where
     T: fmt::Display,
 {
+    /// Maps inner value T to U using mapping function F
+    fn map<U, F>(self, f: F) -> UpdateAction<U>
+    where
+        U: fmt::Display,
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Self::Some(value) => UpdateAction::Some(f(value)),
+            Self::Null => UpdateAction::Null,
+            Self::None => UpdateAction::None,
+        }
+    }
+
     fn map_from<U, F>(from: &UpdateAction<T>, f: F) -> UpdateAction<U>
     where
         U: fmt::Display,
@@ -62,7 +325,7 @@ where
     /// Avoid using this when the UpdateAction value is None
     fn to_statment(&self, col: &str) -> String {
         match &self {
-            Self::Some(value) => format!("{col} = {value}"),
+            Self::Some(value) => format!("{col} = '{value}'"),
             Self::Null => format!("{col} = NULL"),
             Self::None => "".to_string(),
         }
@@ -78,6 +341,37 @@ where
             Some(value) => Self::Some(value),
             None => Self::None,
         }
+    }
+}
+
+impl From<String> for UpdateAction<String> {
+    fn from(value: String) -> Self {
+        if value.is_empty() {
+            UpdateAction::Null
+        } else {
+            UpdateAction::Some(value)
+        }
+    }
+}
+
+/// Columns to update in an update query
+struct UpdateCols<'a, T>(Vec<(&'a str, UpdateAction<T>)>)
+where
+    T: fmt::Display;
+
+impl<T> fmt::Display for UpdateCols<'_, T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let actions: Vec<String> = self
+            .0
+            .iter()
+            .filter(|col| !col.1.is_none())
+            .map(|col| col.1.to_statment(col.0))
+            .collect();
+
+        write!(f, "{}", actions.join(", "))
     }
 }
 
@@ -138,237 +432,14 @@ pub enum RowLimit {
     All,
 }
 
-/// Data struct for updating task columns
-pub struct UpdateTaskCols {
-    /// Name of the task
-    pub name: UpdateAction<String>,
-    /// Priority value for task, higher is more important
-    pub priority: UpdateAction<u64>,
-    /// Completion status of task
-    pub status: UpdateAction<crate::ItemStatus>,
-    /// Start time of the task in ISO 8601 format
-    pub start_time: UpdateAction<String>,
-    /// End time of the task in ISO 8601 format
-    pub end_time: UpdateAction<String>,
-    /// Determins whether and how the task repeats
-    pub repeat: UpdateAction<String>,
-    /// Notes for the task
-    pub notes: UpdateAction<String>,
-}
+pub struct KeyValuePairs<'a>(Vec<(&'a str, String)>);
 
-impl UpdateTaskCols {
-    /// Create a new UpdateTaskCols
-    pub fn new(
-        name: UpdateAction<String>,
-        priority: UpdateAction<u64>,
-        status: UpdateAction<crate::ItemStatus>,
-        start_time: UpdateAction<String>,
-        end_time: UpdateAction<String>,
-        repeat: UpdateAction<String>,
-        notes: UpdateAction<String>,
-    ) -> Self {
-        Self {
-            name,
-            priority,
-            status,
-            start_time,
-            end_time,
-            repeat,
-            notes,
+impl<'a> KeyValuePairs<'a> {
+    /// Push a key value pair to a vector of pairs if value is Some
+    fn push_pairs_if_some(&mut self, key: &'a str, value: Option<String>) {
+        if let Some(value) = value {
+            self.0.push((key, value))
         }
-    }
-
-    /// Create a new UpdateTaskCols for updating just the status column
-    pub fn status(status: crate::ItemStatus) -> Self {
-        Self {
-            name: UpdateAction::None,
-            priority: UpdateAction::None,
-            status: UpdateAction::Some(status),
-            start_time: UpdateAction::None,
-            end_time: UpdateAction::None,
-            repeat: UpdateAction::None,
-            notes: UpdateAction::None,
-        }
-    }
-}
-
-impl fmt::Display for UpdateTaskCols {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        /// Conditionaly pushes an update action on to a vector formatted as string
-        fn push_action<T>(
-            mut actions: Vec<String>,
-            action: &UpdateAction<T>,
-            col: &str,
-        ) -> Vec<String>
-        where
-            T: fmt::Display,
-        {
-            if !action.is_none() {
-                actions.push(action.to_statment(col))
-            }
-
-            actions
-        }
-
-        let mut actions: Vec<String> = Vec::new();
-
-        actions = push_action(actions, &self.name, "name");
-        actions = push_action(actions, &self.priority, "priority");
-        actions = push_action(
-            actions,
-            &UpdateAction::map_from(&self.status, |val| u32::from(*val)), // Enum to int
-            "status",
-        );
-        actions = push_action(actions, &self.start_time, "start_time");
-        actions = push_action(actions, &self.end_time, "end_time");
-        actions = push_action(actions, &self.repeat, "repeat");
-        actions = push_action(actions, &self.notes, "notes");
-
-        write!(f, "{}", actions.join(","))
-    }
-}
-
-/// Functionality for adding sql query string parameters
-trait Query {
-    /// Takes an existing query string and appends condition, order, limit, and offset
-    fn build_query_string(
-        mut query_string: String,
-        condition: &Option<String>,
-        order_by: &Option<OrderBy>,
-        order_dir: &Option<OrderDir>,
-        limit: &Option<RowLimit>,
-        offset: &Option<usize>,
-    ) -> String {
-        //
-        // Query Conditions
-        //
-        if let Some(condition) = condition {
-            // If select condtions provided, add to query string
-            query_string.push_str(&format!(" WHERE {}", condition));
-        }
-
-        //
-        // Query Order
-        //
-
-        // Default order by priority
-        let order_by = order_by.unwrap_or(OrderBy::Priority);
-
-        query_string.push_str(&format!(
-            " ORDER BY {} {}",
-            order_by,
-            match order_dir {
-                // Set order direction if provided, else use defaults
-                Some(dir) => dir,
-                None => match order_by {
-                    OrderBy::Priority => &OrderDir::Desc,
-                    _ => &OrderDir::Asc,
-                },
-            }
-        ));
-
-        //
-        // Query Limit
-        //
-        match limit {
-            Some(RowLimit::Limit(limit)) => query_string.push_str(&format!(" LIMIT {limit}")),
-            Some(RowLimit::All) => {}
-            None => query_string.push_str(" LIMIT 10"),
-        }
-
-        //
-        // Query Offset
-        //
-        if limit.is_none()
-            || limit
-                .as_ref()
-                .is_some_and(|limit| !matches!(limit, RowLimit::All))
-        {
-            if let Some(offset) = offset {
-                query_string.push_str(&format!(" OFFSET {offset}"))
-            }
-        }
-
-        query_string
-    }
-}
-
-/// Task select query struct
-pub struct SelectTasksQuery<'a> {
-    cols: QueryCols<'a>,
-    condition: Option<String>,
-    order_by: Option<OrderBy>,
-    order_dir: Option<OrderDir>,
-    limit: Option<RowLimit>,
-    offset: Option<usize>,
-}
-
-impl<'a> SelectTasksQuery<'a> {
-    pub fn new(
-        cols: QueryCols<'a>,
-        condition: Option<String>,
-        order_by: Option<OrderBy>,
-        order_dir: Option<OrderDir>,
-        limit: Option<RowLimit>,
-        offset: Option<usize>,
-    ) -> Self {
-        SelectTasksQuery {
-            cols,
-            condition,
-            order_by,
-            order_dir,
-            limit,
-            offset,
-        }
-    }
-}
-
-impl Query for SelectTasksQuery<'_> {}
-
-impl fmt::Display for SelectTasksQuery<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic select query string
-        let query_string = Self::build_query_string(
-            format!("SELECT {} FROM {}", self.cols, Tables::Tasks),
-            &self.condition,
-            &self.order_by,
-            &self.order_dir,
-            &self.limit,
-            &self.offset,
-        );
-
-        write!(f, "{query_string};")
-    }
-}
-
-/// Database query struct for task update queries
-pub struct UpdateTaskQuery {
-    update: UpdateTaskCols,
-    condition: Option<String>,
-}
-
-impl UpdateTaskQuery {
-    pub fn new(update: UpdateTaskCols, condition: Option<String>) -> Self {
-        UpdateTaskQuery { update, condition }
-    }
-}
-
-impl Query for UpdateTaskQuery {}
-
-impl fmt::Display for UpdateTaskQuery {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Create basic update query string
-        let mut query_string = format!("UPDATE {} SET {}", Tables::Tasks, self.update);
-
-        // Append query conditions
-        if let Some(condtition) = &self.condition {
-            query_string.push_str(&format!(" WHERE {condtition}"));
-        }
-
-        // End query string
-        query_string.push(';');
-
-        write!(f, "{query_string};")
     }
 }
 
@@ -419,4 +490,9 @@ where
             }
         )
     }
+}
+
+/// Surronds input str with single quote
+fn quote_string(str: &str) -> String {
+    format!("'{str}'")
 }

@@ -1,8 +1,14 @@
+use queries::{
+    AddProjectQuery, AssignTaskQuery, DeleteProjectQuery, DeleteTaskQuery, SelectProjectsQuery,
+    UnassignTaskQuery, UpdateProjectQuery,
+};
 pub use queries::{
     OrderBy, OrderDir, QueryCols, QueryConditions, RowLimit, SelectTasksQuery, UpdateAction,
     UpdateTaskCols, UpdateTaskQuery,
 };
-use std::{collections::HashMap, error, fmt, path::Path, usize};
+use std::{error, fmt, path::Path, usize};
+
+use crate::queries::AddTaskQuery;
 
 pub mod queries;
 
@@ -54,7 +60,7 @@ impl Server {
             CREATE TABLE IF NOT EXISTS {}(
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                 name TEXT NOT NULL,
-                start_time TEXT NOT NULL,
+                start_time TEXT,
                 end_time TEXT,
                 notes TEXT
             );
@@ -63,7 +69,8 @@ impl Server {
                 task_id INTEGER NOT NULL,
                 project_id INTEGER NOT NULL,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
-                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                UNIQUE(task_id, project_id)
             );
             COMMIT;",
             Tables::Tasks,
@@ -80,59 +87,32 @@ impl Server {
     ///
     /// Will return an error if execution of the sql statment fails
     pub fn add_task(&self, args: AddTaskArgs) -> Result<i64, Error> {
-        let mut map: HashMap<&str, String> = HashMap::from([
-            ("name", args.name),
-            ("priority", args.priority.to_string()),
-            ("status", u32::from(args.status).to_string()),
-        ]);
-
-        if let Some(start_time) = args.start_time {
-            map.insert("start_time", start_time);
-        }
-
-        if let Some(end_time) = args.end_time {
-            map.insert("end_time", end_time);
-        }
-
-        if let Some(repeat) = args.repeat {
-            map.insert("repeat", repeat);
-        }
-
-        if let Some(notes) = args.notes {
-            map.insert("repeate", notes);
-        }
-
-        let (cols, vals): (Vec<&str>, Vec<String>) = map
-            .into_iter()
-            .map(|(key, val)| (key, format!("'{}'", val.trim()))) // Surrond values with single quotes (ex: 'val')
-            .unzip();
-
-        let sql_string = format!(
-            "INSERT INTO tasks({}) VALUES({})",
-            cols.join(", "),
-            vals.join(", ")
+        let query = AddTaskQuery::new(
+            args.name,
+            args.priority,
+            args.start_time,
+            args.end_time,
+            args.repeat,
+            args.notes,
         );
 
-        self.connection.execute(&sql_string, ())?;
+        self.connection.execute(&query.to_string(), ())?;
 
         Ok(self.connection.last_insert_rowid())
     }
 
-    /// Delete tasks from the database. Deletes all tasks matching query is Some, if None deletes
+    /// Delete tasks from the database. Deletes all tasks matching query if is Some, if None deletes
     /// all tasks. Returns number of rows modified
     ///
     /// # Errors:
     ///
     /// Will return an error if execution of the sql statment fails
-    pub fn delete_task(&self, query: Option<String>) -> Result<u64, Error> {
-        let mut sql_string = String::from("DELETE FROM tasks");
-
-        if let Some(query) = query {
-            sql_string.push_str(&format!(" WHERE {query}"))
-        }
-        sql_string.push(';');
-
-        self.connection.execute(&sql_string, ())?;
+    pub fn delete_task(&self, condition: Option<String>) -> Result<u64, Error> {
+        // Create delete query
+        let query = DeleteTaskQuery::new(condition);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of rows deleted
         Ok(self.connection.changes())
     }
 
@@ -145,11 +125,21 @@ impl Server {
     /// Will return an error if execution of the sql statment fails
     pub fn update_task(
         &self,
-        update_cols: UpdateTaskCols,
         condition: Option<String>,
+        args: UpdateTaskArgs,
     ) -> Result<u64, Error> {
         self.connection.execute(
-            &UpdateTaskQuery::new(update_cols, condition).to_string(),
+            &UpdateTaskQuery {
+                condition,
+                name: args.name,
+                priority: args.priority,
+                status: args.status,
+                start_time: args.start_time,
+                end_time: args.end_time,
+                repeat: args.repeat,
+                notes: args.notes,
+            }
+            .to_string(),
             (),
         )?;
 
@@ -164,17 +154,20 @@ impl Server {
     pub fn select_tasks(
         &self,
         cols: QueryCols,
-        condtion: Option<String>,
+        condition: Option<String>,
         order_by: Option<OrderBy>,
         order_dir: Option<OrderDir>,
         limit: Option<RowLimit>,
         offset: Option<usize>,
     ) -> Result<Vec<Task>, Error> {
-        let mut statment = self.connection.prepare(
-            &SelectTasksQuery::new(cols, condtion, order_by, order_dir, limit, offset).to_string(),
-        )?;
+        // Create query
+        let query = SelectTasksQuery::new(cols, condition, order_by, order_dir, limit, offset);
+        // Prepare query as statment
+        let mut statment = self.connection.prepare(&query.to_string())?;
 
+        // Map results from statment to data type
         let rows = statment.query_map((), |row| {
+            // Convert status from i64 if value returned from query
             let status = match row.get::<&str, i64>("status") {
                 Ok(value) => Some(ItemStatus::from(value)),
                 Err(_) => None,
@@ -192,7 +185,169 @@ impl Server {
             })
         })?;
 
+        // Remove all empty rows, collect as vector of data and return
         Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Task>>())
+    }
+
+    /// Adds a new project to the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if execution of the query fails
+    pub fn add_project(&self, args: AddProjectArgs) -> Result<i64, Error> {
+        // Create query
+        let query = AddProjectQuery::new(args.name, args.start_time, args.end_time, args.notes);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return id of inserted row
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Updates a project in the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the execution of the query fails
+    pub fn update_project(
+        &self,
+        condition: Option<String>,
+        name: UpdateAction<String>,
+        start_time: UpdateAction<String>,
+        end_time: UpdateAction<String>,
+        notes: UpdateAction<String>,
+    ) -> Result<u64, Error> {
+        // Create query
+        let query = UpdateProjectQuery::new(condition, name, start_time, end_time, notes);
+        // Execute query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of updated rows
+        Ok(self.connection.changes())
+    }
+
+    /// Deletes one or more projects from the application database. If condition is None, deletes
+    /// all projects (scary)
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the sql statment fails to execute
+    pub fn delete_project(&self, condition: Option<String>) -> Result<u64, Error> {
+        // Create delete query
+        let query = DeleteProjectQuery::new(condition);
+        // Execure query
+        self.connection.execute(&query.to_string(), ())?;
+        // Return number of deleted rows
+        Ok(self.connection.changes())
+    }
+
+    /// Selects projects from the application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if the sql statment fails to execute
+    pub fn select_project(
+        &self,
+        cols: QueryCols,
+        condition: Option<String>,
+        order_by: Option<OrderBy>,
+        order_dir: Option<OrderDir>,
+        limit: Option<RowLimit>,
+        offset: Option<usize>,
+    ) -> Result<Vec<Project>, Error> {
+        // Create query
+        let query = SelectProjectsQuery::new(cols, condition, order_by, order_dir, limit, offset);
+        // Prepare query as statment
+        let mut statment = self.connection.prepare(&query.to_string())?;
+
+        // Map results from statment to data type
+        let rows = statment.query_map((), |row| {
+            Ok(Project {
+                id: row.get("id").ok(),
+                name: row.get("name").ok(),
+                start_time: row.get("start_time").ok(),
+                end_time: row.get("end_time").ok(),
+                notes: row.get("notes").ok(),
+                tasks: None,
+            })
+        })?;
+
+        // Remove all empty rows, collect as vector of data and return
+        Ok(rows.filter_map(|row| row.ok()).collect::<Vec<Project>>())
+    }
+
+    /// Creates a new task assignment in application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn assign_task(&self, task_id: i64, project_id: i64) -> Result<i64, Error> {
+        // Create query string
+        let query_string = AssignTaskQuery::new(task_id, project_id).to_string();
+        // Execute query
+        self.connection.execute(&query_string, ())?;
+        // Return new row id
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Batch creates new task assignments in application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn batch_assign_tasks(&self, assignments: Vec<(i64, i64)>) -> Result<Vec<i64>, Error> {
+        // Create query strings
+        let query_strings = assignments
+            .into_iter()
+            .map(|(task_id, project_id)| AssignTaskQuery::new(task_id, project_id).to_string());
+        // Execute query strings aggregating new row ids
+        query_strings
+            .into_iter()
+            .map(|query_string| {
+                self.connection.execute(&query_string, ())?;
+                Ok(self.connection.last_insert_rowid())
+            })
+            .collect::<Result<Vec<i64>, Error>>()
+    }
+
+    /// Removes a task assignment from application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn unassign_task(&self, task_id: i64, project_id: i64) -> Result<u64, Error> {
+        // Create query string
+        let query_string = UnassignTaskQuery::new(task_id, project_id)
+            .to_string()
+            .to_string();
+        // Execute query
+        self.connection.execute(&query_string, ())?;
+        // Return number of affected rows
+        Ok(self.connection.changes())
+    }
+
+    /// Batch removes task assignments from application database
+    ///
+    /// # Errors
+    ///
+    /// Will return an error if sql statment fails to execute
+    pub fn batch_unassign_tasks(&self, unassignments: Vec<(i64, i64)>) -> Result<usize, Error> {
+        // Create query strings
+        let query_strings = unassignments
+            .into_iter()
+            .map(|(task_id, project_id)| UnassignTaskQuery::new(task_id, project_id).to_string());
+        // Execute query strings aggregating number of changed rows
+        Ok(query_strings
+            .into_iter()
+            .filter_map(
+                |query_string| match self.connection.execute(&query_string, ()) {
+                    Ok(changed) => Some(changed),
+                    Err(e) => {
+                        eprintln!("{e}"); // TODO: Refactor errror handling: aggragate and return
+                                          // vector of errors
+                        None
+                    }
+                },
+            )
+            .sum())
     }
 
     /// Returns the total number of rows in a given table.
@@ -233,7 +388,7 @@ impl fmt::Display for Tables {
     }
 }
 
-// Task row data
+/// Task row data
 pub struct Task {
     pub id: Option<i64>,
     /// Name of the task
@@ -251,7 +406,7 @@ pub struct Task {
     /// Notes for the task
     pub notes: Option<String>,
     /// List of projects the task is associate with
-    pub projects: Option<Vec<String>>,
+    pub projects: Option<Vec<Project>>,
 }
 
 impl Clone for Task {
@@ -272,19 +427,74 @@ impl Clone for Task {
 
 /// Arguments for adding a task to the database
 pub struct AddTaskArgs {
-    /// Name of the task
     pub name: String,
-    /// Priority value for task, higher is more important
     pub priority: u64,
-    /// Completion status of task
     pub status: ItemStatus,
-    /// Start time of the task in ISO 8601 format
     pub start_time: Option<String>,
-    /// End time of the task in ISO 8601 format
     pub end_time: Option<String>,
-    /// Determins whether and how the task repeats
     pub repeat: Option<String>,
-    /// Notes for the task
+    pub notes: Option<String>,
+}
+
+/// Arguments for updating a task in the database
+pub struct UpdateTaskArgs {
+    pub name: UpdateAction<String>,
+    pub status: UpdateAction<ItemStatus>,
+    pub priority: UpdateAction<u64>,
+    pub start_time: UpdateAction<String>,
+    pub end_time: UpdateAction<String>,
+    pub repeat: UpdateAction<String>,
+    pub notes: UpdateAction<String>,
+}
+
+impl UpdateTaskArgs {
+    pub fn update_status(status: ItemStatus) -> Self {
+        UpdateTaskArgs {
+            name: UpdateAction::None,
+            priority: UpdateAction::None,
+            status: UpdateAction::Some(status),
+            start_time: UpdateAction::None,
+            end_time: UpdateAction::None,
+            repeat: UpdateAction::None,
+            notes: UpdateAction::None,
+        }
+    }
+}
+
+/// Project row data
+pub struct Project {
+    /// Id of project
+    pub id: Option<i64>,
+    /// Name of project
+    pub name: Option<String>,
+    /// Start time of the project in ISO 8601 format
+    pub start_time: Option<String>,
+    /// End time of the project in ISO 8601 format
+    pub end_time: Option<String>,
+    /// Notes for the project
+    pub notes: Option<String>,
+    /// Tasks assigned to the project
+    pub tasks: Option<Vec<Task>>,
+}
+
+impl Clone for Project {
+    fn clone(&self) -> Self {
+        Project {
+            id: self.id,
+            name: self.name.clone(),
+            start_time: self.start_time.clone(),
+            end_time: self.end_time.clone(),
+            notes: self.notes.clone(),
+            tasks: self.tasks.clone(),
+        }
+    }
+}
+
+/// Arguments for adding project to database
+pub struct AddProjectArgs {
+    pub name: String,
+    pub start_time: Option<String>,
+    pub end_time: Option<String>,
     pub notes: Option<String>,
 }
 

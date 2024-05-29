@@ -1,414 +1,27 @@
 //! Toado application commands
-use crate::{flags, formatting};
+use crate::{
+    flags,
+    formatting::{self},
+};
+
+pub use assignment::*;
+pub use projects::*;
+pub use tasks::*;
+
 use regex::Regex;
 
-/// Searches for a task in a toado server database with provided search term. If term is a positive
-/// integer, searches by task id, otherwise searches by name
-///
-/// # Errors
-///
-/// Will return an error if task selection fails
-pub fn search_tasks(
-    args: flags::SearchArgs,
-    app: toado::Server,
-) -> Result<Option<String>, toado::Error> {
-    let condition = match args.term.parse::<usize>() {
-        // If search term is number, select by id
-        Ok(value) => toado::QueryConditions::Equal {
-            col: "id",
-            value: value.to_string(),
-        },
-        // If search term is not number, select by name
-        Err(_) => toado::QueryConditions::Like {
-            col: "name",
-            value: format!("'%{}%'", args.term),
-        },
-    };
-
-    let tasks = app.select_tasks(
-        toado::QueryCols::All,
-        Some(condition.to_string()),
-        Some(toado::OrderBy::Id),
-        None,
-        Some(toado::RowLimit::All),
-        None,
-    )?;
-
-    if tasks.is_empty() {
-        Ok(None)
-    } else if tasks.len() == 1 {
-        Ok(Some(formatting::format_task(tasks[0].clone())))
-    } else {
-        Ok(Some(formatting::format_task_list(
-            tasks,
-            true,
-            false,
-            args.verbose,
-        )))
-    }
-}
-
-/// Creates a new task in a toado server with provided arguments. Prompts the user to input any task
-/// information not provided in the arguments.
-///
-/// # Errors
-/// Will return an error if any of the user input prompts fail, or if the creation of the task
-/// fails.
-pub fn create_task(
-    args: flags::AddArgs,
-    app: toado::Server,
-) -> Result<(i64, String), toado::Error> {
-    let theme = dialoguer::theme::ColorfulTheme::default();
-
-    let name = option_or_input(
-        args.name,
-        dialoguer::Input::with_theme(&theme)
-            .with_prompt("Name")
-            .validate_with(|input: &String| validate_task_name(input)),
-    )?;
-
-    let priority = option_or_input(
-        args.item_priority,
-        dialoguer::Input::with_theme(&theme)
-            .with_prompt("Priority")
-            .default(0),
-    )?;
-
-    let start_time = if args.optional {
-        None
-    } else {
-        option_or_input_option(
-            args.start_time,
-            dialoguer::Input::with_theme(&theme)
-                .with_prompt("Start Time (optional)")
-                .allow_empty(true),
-        )?
-    };
-
-    let end_time = if args.optional {
-        None
-    } else {
-        option_or_input_option(
-            args.end_time,
-            dialoguer::Input::with_theme(&theme)
-                .with_prompt("End Time (optional)")
-                .allow_empty(true),
-        )?
-    };
-
-    let repeat = if args.optional {
-        None
-    } else {
-        option_or_input_option(
-            args.repeat,
-            dialoguer::Input::with_theme(&theme)
-                .with_prompt("Repeats (optional)")
-                .allow_empty(true),
-        )?
-    };
-
-    let task_id = app.add_task(toado::AddTaskArgs {
-        name: String::from(&name),
-        priority,
-        status: toado::ItemStatus::Incomplete,
-        start_time,
-        end_time,
-        repeat,
-        notes: None,
-    })?;
-
-    Ok((task_id, name))
-}
-
-/// Deletes a task in a toado server database. Searches for task to delete with given search term,
-/// or prompts user for search term if one is not provided
-///
-/// # Errors
-///
-/// Will return an error if user input fails, if deletion operation fails, or if no tasks are
-/// deleted
-pub fn delete_task(
-    args: flags::DeleteArgs,
-    app: toado::Server,
-) -> Result<Option<i64>, toado::Error> {
-    let theme = dialoguer::theme::ColorfulTheme::default();
-
-    let search_term = option_or_input(
-        args.term,
-        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
-    )?;
-
-    let task = prompt_task_selection(
-        &app,
-        search_term,
-        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
-        &theme,
-    )?;
-
-    // Get selected task id
-    let id = match task.id {
-        Some(id) => id,
-        None => return Err(Into::into("task id should exist")),
-    };
-
-    let affected_rows = app.delete_task(Some(
-        toado::QueryConditions::Equal {
-            col: "id",
-            value: id,
-        }
-        .to_string(),
-    ))?;
-
-    if affected_rows >= 1 {
-        Ok(Some(id))
-    } else {
-        Err(Into::into("no tasks deleted"))
-    }
-}
-
-/// Update a task in a toado server
-///
-/// # Errors
-///
-/// Will return an error if user input fails, if task updating fails, or if no task is updated
-pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, toado::Error> {
-    let theme = dialoguer::theme::ColorfulTheme::default();
-
-    let search_term = option_or_input(
-        args.term.clone(),
-        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
-    )?;
-
-    let task = prompt_task_selection(
-        &app,
-        search_term,
-        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
-        &theme,
-    )?;
-
-    // Get selected task id
-    let task_id = match task.id {
-        Some(id) => id,
-        None => return Err(Into::into("task id should exist")),
-    };
-
-    // surronds string with quotes
-    let quotes = |value: String| format!("'{value}'");
-
-    let update_cols: toado::UpdateTaskCols = {
-        if args.has_task_update_values() {
-            // If update values are set by command arguments, use those values
-            fn nullable_into_update_action(
-                flag: Option<flags::NullableString>,
-            ) -> toado::UpdateAction<String> {
-                match flag {
-                    Some(flags::NullableString::Some(value)) => toado::UpdateAction::Some(value),
-                    Some(flags::NullableString::Null) => toado::UpdateAction::Null,
-                    None => toado::UpdateAction::None,
-                }
-            }
-
-            toado::UpdateTaskCols::new(
-                toado::UpdateAction::from(args.name.map(quotes)),
-                toado::UpdateAction::from(args.item_priority),
-                toado::UpdateAction::None,
-                nullable_into_update_action(args.start_time.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.end_time.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.repeat.map(|v| v.map(quotes))),
-                nullable_into_update_action(args.notes.map(|v| v.map(quotes))),
-            )
-        } else {
-            // Else, prompt user for update values
-
-            // Get current task values
-            let current_name = match task.name {
-                Some(value) => value,
-                None => return Err(Into::into("task name should exist")),
-            };
-            let current_priority = match task.priority {
-                Some(value) => value,
-                None => return Err(Into::into("task priority should exist")),
-            };
-            let current_start_time = task.start_time.unwrap_or("".to_string());
-            let current_end_time = task.end_time.unwrap_or("".to_string());
-            let current_repeat = task.repeat.unwrap_or("".to_string());
-            let current_notes = task.notes.unwrap_or("".to_string());
-
-            // Get user input for update values
-            let name: String = dialoguer::Input::with_theme(&theme)
-                .with_prompt("Name")
-                .validate_with(|input: &String| validate_task_name(input))
-                .with_initial_text(current_name)
-                .interact_text()?;
-
-            let priority: u64 = dialoguer::Input::with_theme(&theme)
-                .with_prompt("Priority")
-                .default(0)
-                .with_initial_text(current_priority.to_string())
-                .interact_text()?;
-
-            let start_time: String = dialoguer::Input::with_theme(&theme)
-                .with_prompt("Start Time (optional)")
-                .with_initial_text(current_start_time)
-                .allow_empty(true)
-                .interact_text()?;
-
-            let end_time: String = dialoguer::Input::with_theme(&theme)
-                .with_prompt("End Time (optional)")
-                .with_initial_text(current_end_time)
-                .allow_empty(true)
-                .interact_text()?;
-
-            let repeat: String = dialoguer::Input::with_theme(&theme)
-                .with_prompt("Repeat (optional)")
-                .with_initial_text(current_repeat)
-                .allow_empty(true)
-                .interact_text()?;
-
-            let notes: String = dialoguer::Input::with_theme(&theme)
-                .with_prompt("Notes (optional)")
-                .with_initial_text(current_notes)
-                .allow_empty(true)
-                .interact_text()?;
-
-            fn string_to_update_action(s: String) -> toado::UpdateAction<String> {
-                if s.is_empty() {
-                    toado::UpdateAction::Null
-                } else {
-                    toado::UpdateAction::Some(format!("'{s}'"))
-                }
-            }
-
-            toado::UpdateTaskCols::new(
-                toado::UpdateAction::Some(quotes(name)),
-                toado::UpdateAction::Some(priority),
-                toado::UpdateAction::None,
-                string_to_update_action(start_time),
-                string_to_update_action(end_time),
-                string_to_update_action(repeat),
-                string_to_update_action(notes),
-            )
-        }
-    };
-
-    app.update_task(
-        update_cols,
-        Some(
-            toado::QueryConditions::Equal {
-                col: "id",
-                value: task_id,
-            }
-            .to_string(),
-        ),
-    )
-}
-
-/// Gets a list of tasks from a toado server
-///
-/// # Errors
-///
-/// Will return an error if selecting tasks from the server database fails
-pub fn list_tasks(
-    args: &flags::ListArgs,
-    app: toado::Server,
-) -> Result<Option<String>, toado::Error> {
-    // Determin order direction
-    let order_dir = match (args.asc, args.desc) {
-        (true, _) => Some(toado::OrderDir::Asc),
-        (false, true) => Some(toado::OrderDir::Desc),
-        (false, false) => None,
-    };
-
-    // Determin columns to select
-    let cols = if args.verbose {
-        toado::QueryCols::All
-    } else {
-        toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
-    };
-
-    // Determin selection row limit
-    let limit = match (args.full, args.limit) {
-        (true, _) => Some(toado::RowLimit::All), // Select all
-        (false, Some(val)) => Some(toado::RowLimit::Limit(val)), // Select set number
-        _ => None,                               // Select default number
-    };
-
-    // Get tasks from application database
-    let tasks = app.select_tasks(cols, None, args.order_by, order_dir, limit, args.offset)?;
-    let num_tasks = tasks.len();
-
-    // Format tasks into a table string to display
-    let mut table_string = formatting::format_task_list(tasks, true, false, args.verbose);
-
-    // If not selecting all tasks, display number of tasks selected
-    if !args.full {
-        let start_pos = args.offset.unwrap_or(0);
-        table_string.push_str(&format!(
-            "\n{}-{} of {}",
-            start_pos,
-            start_pos + num_tasks,
-            app.get_table_row_count(toado::Tables::Tasks)?,
-        ))
-    }
-
-    Ok(Some(table_string))
-}
-
-pub fn check_task(
-    args: flags::CheckArgs,
-    app: toado::Server,
-) -> Result<(String, toado::ItemStatus), toado::Error> {
-    let theme = dialoguer::theme::ColorfulTheme::default();
-
-    let search_term = option_or_input(
-        args.term,
-        dialoguer::Input::with_theme(&theme).with_prompt("Task name"),
-    )?;
-
-    let task = prompt_task_selection(
-        &app,
-        search_term,
-        toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
-        &theme,
-    )?;
-
-    // Get selected task id
-    let id = match task.id {
-        Some(id) => id,
-        None => return Err(Into::into("task id should exist")),
-    };
-
-    let name = match task.name {
-        Some(name) => name,
-        None => return Err(Into::into("task name should exist")),
-    };
-
-    let new_status = match args.incomplete {
-        true => toado::ItemStatus::Incomplete,
-        false => toado::ItemStatus::Complete,
-    };
-
-    let affected_rows = app.update_task(
-        toado::UpdateTaskCols::status(new_status),
-        Some(
-            toado::QueryConditions::Equal {
-                col: "id",
-                value: id,
-            }
-            .to_string(),
-        ),
-    )?;
-
-    if affected_rows == 0 {
-        Err(Into::into("no rows affected by update"))
-    } else {
-        Ok((name, new_status))
-    }
-}
+mod assignment;
+mod projects;
+mod tasks;
 
 //
 // Private methods
 //
+
+/// Get the input theme used for user input
+fn get_input_theme() -> impl dialoguer::theme::Theme {
+    dialoguer::theme::ColorfulTheme::default()
+}
 
 /// Return the `T` of an `Option<T>` if `Option<T>` is `Some<T>`, otherwise, prompt the user for an
 /// input of type `T`.
@@ -427,23 +40,26 @@ where
     }
 }
 
-/// Return the `Some(String)` of an `Option<String>` if `Option<String>` is `Some(String)`, otherwise,
-/// prompt the user for an input of type `String`. If user input is blank, return `None`
-/// TODO: Make this function generic. ie. `Result<Option<T>, toado::Error>`
+/// Return the `Some(T)` of an `Option<T>` if `Option<T>` is `Some(T)`, otherwise,
+/// prompt the user for an input of type `T`. If user input is blank, return `None`
 ///
 /// # Errors
 ///
 /// Returns error if getting user input fails
-fn option_or_input_option(
-    value: Option<String>,
-    input: dialoguer::Input<String>,
-) -> Result<Option<String>, toado::Error> {
+fn option_or_input_option<T>(
+    value: Option<T>,
+    input: dialoguer::Input<T>,
+) -> Result<Option<T>, toado::Error>
+where
+    T: Clone + ToString + std::str::FromStr,
+    <T as std::str::FromStr>::Err: ToString,
+{
     match value {
         Some(value) => Ok(Some(value)),
         None => {
-            let user_input = input.interact_text()?;
+            let user_input = input.allow_empty(true).interact_text()?;
 
-            Ok(if !user_input.is_empty() {
+            Ok(if !user_input.to_string().is_empty() {
                 Some(user_input)
             } else {
                 None
@@ -452,77 +68,237 @@ fn option_or_input_option(
     }
 }
 
-/// Selects tasks from an application database given a search term. If multiple tasks match the
-/// term, prompts the user to select one of the matching tasks and returns it. If one task matches
-/// inputed name, returns said task
-///
-/// # Errors
-/// Will return an error if no tasks match the search term
-fn prompt_task_selection(
-    app: &toado::Server,
-    search_term: String,
-    cols: toado::QueryCols,
-    theme: &dyn dialoguer::theme::Theme,
-) -> Result<toado::Task, toado::Error> {
-    let select_condition = match search_term.parse::<usize>() {
-        // If search term is number, select by id
-        Ok(num) => toado::QueryConditions::Equal {
-            col: "id",
-            value: num.to_string(),
-        },
-        // If search term is not number, select by name
-        Err(_) => toado::QueryConditions::Like {
-            col: "name",
-            value: format!("'%{search_term}%'"),
-        },
-    };
+enum TasksOrProjects {
+    Tasks(Vec<toado::Task>),
+    Projects(Vec<toado::Project>),
+}
 
-    // Get tasks matching name argument
-    let mut tasks = app.select_tasks(
-        // toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
-        cols,
-        Some(select_condition.to_string()),
-        Some(toado::OrderBy::Name),
-        None,
-        Some(toado::RowLimit::All),
-        None,
-    )?;
-
-    // If no tasks match search term, return error
-    if tasks.is_empty() {
-        return Err(Into::into(format!("no task matches {search_term}")));
+impl TasksOrProjects {
+    fn tasks(self) -> Vec<toado::Task> {
+        match self {
+            Self::Tasks(tasks) => tasks,
+            _ => panic!("value should be of type Tasks"),
+        }
     }
 
-    if tasks.len() == 1 {
-        Ok(tasks.remove(0))
+    fn projects(self) -> Vec<toado::Project> {
+        match self {
+            Self::Projects(projects) => projects,
+            _ => panic!("value should be of type Projects"),
+        }
     }
-    // If multiple tasks match name argument, prompt user to select one
-    else {
-        // Format matching tasks into vector of strings
-        let task_strings: Vec<String> =
-            formatting::format_task_list(tasks.clone(), true, false, false)
-                .split('\n')
-                .map(|line| line.to_string())
-                .collect();
 
-        // Get task selection from user
-        match tasks.get(
-            dialoguer::Select::with_theme(theme)
-                .with_prompt("Select task")
-                .items(&task_strings)
-                .interact()?,
-        ) {
-            Some(task) => Ok(task.clone()),
-            None => Err(Into::into("selected task should exist")),
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::Tasks(tasks) => tasks.is_empty(),
+            Self::Projects(projects) => projects.is_empty(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Tasks(tasks) => tasks.len(),
+            Self::Projects(projects) => projects.len(),
+        }
+    }
+
+    fn name(&self) -> &str {
+        match self {
+            Self::Tasks(_) => "tasks",
+            Self::Projects(_) => "projects",
         }
     }
 }
 
-fn validate_task_name(input: &str) -> Result<(), String> {
+/// Prompt the user to select an item (Task or Project) from list of items from a toado
+/// application. If search term is Some, filters list to matching items.
+///
+/// # Errors
+///
+/// Will return an error if getting item list fails, or if user input fails
+fn prompt_select_item(
+    term: Option<String>,
+    app: &toado::Server,
+    theme: &dyn dialoguer::theme::Theme,
+    multi_select: bool,
+    projects: bool,
+) -> Result<TasksOrProjects, toado::Error> {
+    let condition = match &term {
+        Some(term) => match term.parse::<usize>() {
+            Ok(num) => Some(
+                toado::QueryConditions::Equal {
+                    col: "id",
+                    value: num.to_string(),
+                }
+                .to_string(),
+            ),
+            Err(_) => Some(
+                toado::QueryConditions::Like {
+                    col: "name",
+                    value: format!("'%{term}%'"),
+                }
+                .to_string(),
+            ),
+        },
+        None => None,
+    };
+
+    let items = if !projects {
+        TasksOrProjects::Tasks(app.select_tasks(
+            toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
+            condition,
+            Some(toado::OrderBy::Name),
+            None,
+            None,
+            None,
+        )?)
+    } else {
+        TasksOrProjects::Projects(app.select_project(
+            toado::QueryCols::Some(vec!["id", "name", "start_time", "end_time"]),
+            condition,
+            Some(toado::OrderBy::Name),
+            None,
+            None,
+            None,
+        )?)
+    };
+
+    if items.is_empty() {
+        if let Some(term) = term {
+            return Err(Into::into(format!("no {} match {term}", items.name())));
+        }
+
+        return Err(Into::into(format!("no {} found", items.name())));
+    }
+
+    if items.len() == 1 {
+        return Ok(match items {
+            TasksOrProjects::Tasks(tasks) => TasksOrProjects::Tasks(vec![tasks[0].clone()]),
+            TasksOrProjects::Projects(projects) => {
+                TasksOrProjects::Projects(vec![projects[0].clone()])
+            }
+        });
+    }
+
+    let list_string = match &items {
+        TasksOrProjects::Tasks(tasks) => {
+            formatting::format_task_list(tasks.clone(), true, false, false)
+        }
+        TasksOrProjects::Projects(projects) => {
+            formatting::format_project_list(projects.clone(), true, false, false)
+        }
+    };
+
+    let select_items: Vec<&str> = list_string.split('\n').collect();
+
+    if multi_select {
+        let selected_ids = dialoguer::MultiSelect::with_theme(theme)
+            .with_prompt(format!("Select {}", items.name()))
+            .items(&select_items)
+            .interact()?;
+
+        Ok(match items {
+            TasksOrProjects::Tasks(tasks) => {
+                let mut selected_tasks: Vec<toado::Task> = Vec::new();
+
+                for idx in selected_ids {
+                    if let Some(task) = tasks.get(idx) {
+                        selected_tasks.push(task.clone())
+                    } else {
+                        return Err(Into::into("selected task should exist"));
+                    }
+                }
+
+                TasksOrProjects::Tasks(selected_tasks)
+            }
+            TasksOrProjects::Projects(projects) => {
+                let mut selected_projects: Vec<toado::Project> = Vec::new();
+
+                for idx in selected_ids {
+                    if let Some(project) = projects.get(idx) {
+                        selected_projects.push(project.clone())
+                    } else {
+                        return Err(Into::into("selected project should exist"));
+                    }
+                }
+
+                TasksOrProjects::Projects(selected_projects)
+            }
+        })
+    } else {
+        let selected_idx = dialoguer::Select::with_theme(theme)
+            .with_prompt(format!("Select {}", items.name()))
+            .items(&select_items)
+            .interact()?;
+
+        match items {
+            TasksOrProjects::Tasks(tasks) => match tasks.get(selected_idx) {
+                Some(task) => Ok(TasksOrProjects::Tasks(vec![task.clone()])),
+                None => Err(Into::into("selected task should exist")),
+            },
+            TasksOrProjects::Projects(projects) => match projects.get(selected_idx) {
+                Some(project) => Ok(TasksOrProjects::Projects(vec![project.clone()])),
+                None => Err(Into::into("selected project should exist")),
+            },
+        }
+    }
+}
+
+/// Validate an item name
+fn validate_name(input: &str) -> Result<(), String> {
     let r = Regex::new(r"(^[0-9]+$|^\d)").expect("Regex creation should not fail");
     if r.is_match(input) {
-        Err("Name cannot start or be a number".to_string())
+        Err("Name cannot start with or be a number".to_string())
     } else {
         Ok(())
+    }
+}
+
+/// Parse list command CLI arguments into their respecitve data types
+fn parse_list_args<'a>(
+    args: &flags::ListArgs,
+) -> (
+    toado::QueryCols<'a>,
+    Option<toado::OrderBy>,
+    Option<toado::OrderDir>,
+    Option<toado::RowLimit>,
+    Option<usize>,
+) {
+    let order_dir = match (args.asc, args.desc) {
+        (true, _) => Some(toado::OrderDir::Asc),
+        (false, true) => Some(toado::OrderDir::Desc),
+        (false, false) => None,
+    };
+
+    // Determin columns to select
+    let cols = if args.verbose {
+        toado::QueryCols::All
+    } else if args.task || !args.project {
+        toado::QueryCols::Some(Vec::from(["id", "name", "priority", "status"]))
+    } else {
+        toado::QueryCols::Some(Vec::from(["id", "name", "start_time", "end_time"]))
+    };
+
+    // Determin selection row limit
+    let limit = match (args.full, args.limit) {
+        (true, _) => Some(toado::RowLimit::All), // Select all
+        (false, Some(val)) => Some(toado::RowLimit::Limit(val)), // Select set number
+        _ => None,                               // Select default number
+    };
+
+    (cols, args.order_by, order_dir, limit, args.offset)
+}
+
+fn list_footer(offset: Option<usize>, count: usize, total: usize) -> String {
+    let offset = offset.unwrap_or(0);
+    format!("\n{}-{} of {}", offset, offset + count, total)
+}
+
+/// Converts an optional nullable string into an update action
+fn nullable_into_update_action(flag: Option<flags::NullableString>) -> toado::UpdateAction<String> {
+    match flag {
+        Some(flags::NullableString::Some(value)) => toado::UpdateAction::Some(value),
+        Some(flags::NullableString::Null) => toado::UpdateAction::Null,
+        None => toado::UpdateAction::None,
     }
 }

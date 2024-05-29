@@ -124,6 +124,7 @@ fn handle_command(
         flags::Commands::Update(args) => handle_update(args, app)?,
         flags::Commands::Ls(args) => handle_ls(args, app)?,
         flags::Commands::Check(args) => handle_check(args, app)?,
+        flags::Commands::Assign(args) => handle_assign(args, app)?,
     };
 
     Ok(message)
@@ -153,9 +154,14 @@ fn handle_search(
 fn handle_add(args: flags::AddArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
         let (task_id, task_name) = commands::create_task(args, app)?;
-        Ok(Some(format!("Created task {task_name} with id {task_id}")))
+        Ok(Some(format!(
+            "Created task '{task_name}' with id '{task_id}'"
+        )))
     } else {
-        Err(Into::into("project adding not implemented"))
+        let (project_id, project_name) = commands::create_project(args, app)?;
+        Ok(Some(format!(
+            "Created project '{project_name}' with id '{project_id}'"
+        )))
     }
 }
 
@@ -174,7 +180,10 @@ fn handle_delete(
             None => Ok(None),
         }
     } else {
-        Err(Into::into("project deletion not implemented"))
+        match commands::delete_project(args, app)? {
+            Some(id) => Ok(Some(format!("Deleted project with id {id}"))),
+            None => Ok(None),
+        }
     }
 }
 
@@ -187,12 +196,14 @@ fn handle_update(
     args: flags::UpdateArgs,
     app: toado::Server,
 ) -> Result<Option<String>, toado::Error> {
-    if args.task || !args.project {
-        let affected_rows = commands::update_task(args, app)?;
-        Ok(Some(format!("{affected_rows} row(s) updated")))
-    } else {
-        Err(Into::into("project updating is not implemented"))
-    }
+    Ok(Some(format!(
+        "{} row(s) updated",
+        if args.task || !args.project {
+            commands::update_task(args, app)?
+        } else {
+            commands::update_project(args, app)?
+        }
+    )))
 }
 
 /// Handle the list command
@@ -202,9 +213,9 @@ fn handle_update(
 /// Will return an error if the task or project selection fails
 fn handle_ls(args: flags::ListArgs, app: toado::Server) -> Result<Option<String>, toado::Error> {
     if args.task || !args.project {
-        Ok(commands::list_tasks(&args, app)?)
+        commands::list_tasks(args, app)
     } else {
-        Err(Into::into("task listing not implemented"))
+        commands::list_projects(args, app)
     }
 }
 
@@ -222,4 +233,44 @@ fn handle_check(
         "Set '{task_name}' to {}",
         task_status.to_string().to_uppercase()
     )))
+}
+
+/// Handle the assign command
+///
+/// # Errors
+///
+/// Will return an error if assigning command fails
+fn handle_assign(
+    args: flags::AssignArgs,
+    app: toado::Server,
+) -> Result<Option<String>, toado::Error> {
+    let (pairs, action) = if !args.unassign {
+        // Assign task(s)
+        (
+            if !args.no_select {
+                commands::assign_multiple_tasks(args, app)?
+            } else {
+                vec![commands::assign_task(args, app)?]
+            },
+            "assigned to",
+        )
+    } else {
+        // Unassign task(s)
+        (
+            if !args.no_select {
+                commands::unassign_multiple_tasks(args, app)?
+            } else {
+                vec![commands::unassign_task(args, app)?]
+            },
+            "unassigned from",
+        )
+    };
+
+    let message = pairs
+        .into_iter()
+        .map(|(task_name, project_name)| format!("'{task_name}' {action} '{project_name}'"))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    Ok(Some(message))
 }
