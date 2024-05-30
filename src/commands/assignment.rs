@@ -1,4 +1,4 @@
-use crate::flags;
+use crate::{config, flags};
 
 use super::{get_input_theme, prompt_select_item};
 
@@ -41,15 +41,16 @@ pub fn assign_task(
 pub fn assign_multiple_tasks(
     args: flags::AssignArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Vec<(String, String)>, toado::Error> {
     let (task_term, project_term) = parse_search_terms(&args);
 
     let theme = get_input_theme();
 
     // Get task(s) to assign to project(s)
-    let tasks = prompt_select_item(task_term, &app, &theme, true, false)?.tasks();
+    let tasks = prompt_select_item(task_term, &app, &theme, true, false, config)?.tasks();
     // Get project(s) to assign to tasks(s)
-    let projects = prompt_select_item(project_term, &app, &theme, true, true)?.projects();
+    let projects = prompt_select_item(project_term, &app, &theme, true, true, config)?.projects();
 
     let (task_ids, task_names) = parse_task_names_and_ids(tasks)?;
     let (project_ids, project_names) = parse_project_names_and_ids(projects)?;
@@ -94,6 +95,7 @@ pub fn unassign_task(
 pub fn unassign_multiple_tasks(
     args: flags::AssignArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Vec<(String, String)>, toado::Error> {
     let theme = get_input_theme();
 
@@ -101,9 +103,9 @@ pub fn unassign_multiple_tasks(
     let (task_term, project_term) = parse_search_terms(&args);
 
     // Get task(s) to unassign to project(s)
-    let tasks = prompt_select_item(task_term, &app, &theme, true, false)?.tasks();
+    let tasks = prompt_select_item(task_term, &app, &theme, true, false, config)?.tasks();
     // Get project(s) to unassign to tasks(s)
-    let projects = prompt_select_item(project_term, &app, &theme, true, true)?.projects();
+    let projects = prompt_select_item(project_term, &app, &theme, true, true, config)?.projects();
 
     let (task_ids, task_names) = parse_task_names_and_ids(tasks)?;
     let (project_ids, project_names) = parse_project_names_and_ids(projects)?;

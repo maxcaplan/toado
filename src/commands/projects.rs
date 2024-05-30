@@ -65,7 +65,11 @@ pub fn create_project(
 /// # Errors
 ///
 /// Will return an error if user input fails, or if project updating fails
-pub fn update_project(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, toado::Error> {
+pub fn update_project(
+    args: flags::UpdateArgs,
+    app: toado::Server,
+    config: &config::Config,
+) -> Result<u64, toado::Error> {
     let theme = dialoguer::theme::ColorfulTheme::default();
 
     let search_term = option_or_input(
@@ -78,6 +82,7 @@ pub fn update_project(args: flags::UpdateArgs, app: toado::Server) -> Result<u64
         search_term,
         toado::QueryCols::Some(vec!["id", "name", "start_time", "end_time"]),
         &theme,
+        config,
     )?;
 
     // Get selected project id
@@ -151,6 +156,7 @@ pub fn update_project(args: flags::UpdateArgs, app: toado::Server) -> Result<u64
 pub fn delete_project(
     args: flags::DeleteArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Option<i64>, toado::Error> {
     let theme = dialoguer::theme::ColorfulTheme::default();
 
@@ -164,6 +170,7 @@ pub fn delete_project(
         search_term,
         toado::QueryCols::Some(vec!["id", "name", "start_time"]),
         &theme,
+        config,
     )?;
 
     // Get selected task id
@@ -196,13 +203,15 @@ pub fn delete_project(
 pub fn list_projects(
     args: flags::ListArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Option<String>, toado::Error> {
     let (cols, order_by, order_dir, limit, offset) = parse_list_args(&args);
 
     let projects = app.select_project(cols, None, order_by, order_dir, limit, offset)?;
     let num_projects = projects.len();
 
-    let mut table_string = formatting::format_project_list(projects, true, false, args.verbose);
+    let mut table_string =
+        formatting::format_project_list(projects, true, false, args.verbose, &config.table);
 
     // If not selecting all projects, display number of tasks selected
     if !args.full {
@@ -232,6 +241,7 @@ fn prompt_project_selection(
     search_term: String,
     cols: toado::QueryCols,
     theme: &dyn dialoguer::theme::Theme,
+    config: &config::Config,
 ) -> Result<toado::Project, toado::Error> {
     let select_condition = match search_term.parse::<usize>() {
         // If search term is number, select by id
@@ -269,7 +279,7 @@ fn prompt_project_selection(
     else {
         // Format matching tasks into vector of strings
         let project_strings: Vec<String> =
-            formatting::format_project_list(projects.clone(), true, false, false)
+            formatting::format_project_list(projects.clone(), true, false, false, &config.table)
                 .split('\n')
                 .map(|line| line.to_string())
                 .collect();

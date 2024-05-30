@@ -1,7 +1,7 @@
-use crate::formatting::table::AsciiTable;
+use crate::{config, formatting::table::AsciiTable};
 
 /// Format a single task as a string to be displayed to the user
-pub fn format_task(task: toado::Task) -> String {
+pub fn format_task(task: toado::Task, config: &config::Config) -> String {
     let mut lines: Vec<String> = Vec::new();
 
     // Push task id and or name
@@ -12,15 +12,16 @@ pub fn format_task(task: toado::Task) -> String {
             let id = id.to_string();
             let id_l = id.len();
 
-            lines.push(format!("{} │ {}", name, id));
+            lines.push(format!("{} {} {}", name, config.table.vertical, id));
             lines.push(format!(
-                "{}┴{}",
-                "─".repeat(name_l + 1),
-                "─".repeat(id_l + 1)
+                "{}{}{}",
+                config.table.horizontal.to_string().repeat(name_l + 1),
+                config.table.up_horizontal,
+                config.table.horizontal.to_string().repeat(id_l + 1)
             ))
         } else {
             lines.push(name);
-            lines.push("─".repeat(name_l))
+            lines.push(config.table.horizontal.to_string().repeat(name_l))
         }
     }
 
@@ -68,8 +69,9 @@ pub fn format_task_list(
     seperate_cols: bool,
     seperate_rows: bool,
     verbose: bool,
+    config: &config::TableConfig,
 ) -> String {
-    let table = AsciiTable::from(
+    let table = AsciiTable::new(
         tasks
             .into_iter()
             .map(|task| {
@@ -91,6 +93,7 @@ pub fn format_task_list(
                 cols
             })
             .collect::<Vec<Vec<String>>>(),
+        config,
     );
 
     table

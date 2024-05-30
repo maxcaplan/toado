@@ -1,6 +1,6 @@
 //! Toado application commands
 use crate::{
-    flags,
+    config, flags,
     formatting::{self},
 };
 
@@ -122,6 +122,7 @@ fn prompt_select_item(
     theme: &dyn dialoguer::theme::Theme,
     multi_select: bool,
     projects: bool,
+    config: &config::Config,
 ) -> Result<TasksOrProjects, toado::Error> {
     let condition = match &term {
         Some(term) => match term.parse::<usize>() {
@@ -182,10 +183,10 @@ fn prompt_select_item(
 
     let list_string = match &items {
         TasksOrProjects::Tasks(tasks) => {
-            formatting::format_task_list(tasks.clone(), true, false, false)
+            formatting::format_task_list(tasks.clone(), true, false, false, &config.table)
         }
         TasksOrProjects::Projects(projects) => {
-            formatting::format_project_list(projects.clone(), true, false, false)
+            formatting::format_project_list(projects.clone(), true, false, false, &config.table)
         }
     };
 
