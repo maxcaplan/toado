@@ -1,0 +1,14 @@
+[table]
+seperate_columns = true
+seperate_rows = true
+horizontal = "─"
+vertical = "│"
+up_horizontal = "┴"
+down_horizontal = "┬"
+vertical_right = "├"
+vertical_left = "┤"
+vertical_horizontal = "┼"
+down_right = "┌"
+down_left = "┐"
+up_right = "└"
+up_left = "┘"
