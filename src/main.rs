@@ -10,17 +10,18 @@ mod formatting;
 fn main() {
     // Run the application and capture result
     let run = || -> Result<(), toado::Error> {
+        // Get CLI arguments
+        let args = flags::Cli::parse();
+
         // Get app configuration
-        let app_config = match config::get_config(None) {
+        let config_path = args.config.map(PathBuf::from);
+        let app_config = match config::get_config(config_path) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("Failed to load config: {e}");
                 return Err(e);
             }
         };
-
-        // Get CLI arguments
-        let args = flags::Cli::parse();
 
         // Get application directory
         let database_path = match init_database_path(args.file) {
