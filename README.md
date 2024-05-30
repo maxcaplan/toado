@@ -96,6 +96,8 @@ $ toado
 
 This will generate a config file at `~/.config/toado/config.toml`
 
+You can also view the defualt config file [here](config.toml) 
+
 # Building
 
 To build the project, you must have [Rust](https://www.rust-lang.org/) version 1.77.2 or later.
