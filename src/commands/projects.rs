@@ -210,8 +210,7 @@ pub fn list_projects(
     let projects = app.select_project(cols, None, order_by, order_dir, limit, offset)?;
     let num_projects = projects.len();
 
-    let mut table_string =
-        formatting::format_project_list(projects, true, false, args.verbose, &config.table);
+    let mut table_string = formatting::format_project_list(projects, args.verbose, &config.table);
 
     // If not selecting all projects, display number of tasks selected
     if !args.full {
@@ -279,7 +278,7 @@ fn prompt_project_selection(
     else {
         // Format matching tasks into vector of strings
         let project_strings: Vec<String> =
-            formatting::format_project_list(projects.clone(), true, false, false, &config.table)
+            formatting::format_project_list(projects.clone(), false, &config.table)
                 .split('\n')
                 .map(|line| line.to_string())
                 .collect();

@@ -15,6 +15,14 @@ struct ConfigData {
 /// Table config data
 #[derive(Deserialize)]
 struct TableData {
+    pub seperate_columns: Option<bool>,
+    pub seperate_rows: Option<bool>,
+    pub characters: Option<TableCharsData>,
+}
+
+/// Table chars datas
+#[derive(Deserialize)]
+struct TableCharsData {
     pub horizontal: Option<char>,
     pub vertical: Option<char>,
     pub up_horizontal: Option<char>,
@@ -36,31 +44,26 @@ pub struct Config {
 
 impl From<ConfigData> for Config {
     fn from(value: ConfigData) -> Self {
-        let table = match value.table {
-            // If table config data is Some, use values
-            Some(table_data) => TableConfig::new(
-                TableHorizontalChars {
-                    horizontal: table_data.horizontal.unwrap_or('─'),
-                    up_horizontal: table_data.up_horizontal.unwrap_or('┴'),
-                    down_horizontal: table_data.down_horizontal.unwrap_or('┬'),
-                },
-                TableVerticalChars {
-                    vertical: table_data.vertical.unwrap_or('│'),
-                    vertical_right: table_data.vertical_right.unwrap_or('├'),
-                    vertical_left: table_data.vertical_left.unwrap_or('┤'),
-                },
-                TableCornerChars {
-                    down_right: table_data.down_right.unwrap_or('┌'),
-                    down_left: table_data.down_left.unwrap_or('┐'),
-                    up_right: table_data.up_right.unwrap_or('└'),
-                    up_left: table_data.up_left.unwrap_or('┘'),
-                },
-                table_data.vertical_horizontal.unwrap_or('┼'),
-            ),
+        let mut table = TableConfig::default();
 
-            // If table config data is none, use defaults
-            None => TableConfig::default(),
-        };
+        if let Some(table_data) = value.table {
+            table.seperate_cols = table_data.seperate_columns.unwrap_or(true);
+            table.seperate_rows = table_data.seperate_rows.unwrap_or(false);
+
+            if let Some(table_chars) = table_data.characters {
+                table.horizontal = table_chars.horizontal.unwrap_or('─');
+                table.up_horizontal = table_chars.up_horizontal.unwrap_or('┴');
+                table.down_horizontal = table_chars.down_horizontal.unwrap_or('┬');
+                table.vertical = table_chars.vertical.unwrap_or('│');
+                table.vertical_right = table_chars.vertical_right.unwrap_or('├');
+                table.vertical_left = table_chars.vertical_left.unwrap_or('┤');
+                table.down_right = table_chars.down_right.unwrap_or('┌');
+                table.down_left = table_chars.down_left.unwrap_or('┐');
+                table.up_right = table_chars.up_right.unwrap_or('└');
+                table.up_left = table_chars.up_left.unwrap_or('┘');
+                table.vertical_horizontal = table_chars.vertical_horizontal.unwrap_or('┼');
+            }
+        }
 
         Self { table }
     }
@@ -69,6 +72,8 @@ impl From<ConfigData> for Config {
 /// Application Table config
 #[derive(Debug)]
 pub struct TableConfig {
+    pub seperate_cols: bool,
+    pub seperate_rows: bool,
     pub horizontal: char,
     pub vertical: char,
     pub up_horizontal: char,
@@ -83,29 +88,12 @@ pub struct TableConfig {
 }
 
 impl TableConfig {
-    fn new(
-        horizontal_chars: TableHorizontalChars,
-        vertical_chars: TableVerticalChars,
-        corner_chars: TableCornerChars,
-        vertical_horizontal_char: char,
-    ) -> Self {
-        TableConfig {
-            horizontal: horizontal_chars.horizontal,
-            vertical: vertical_chars.vertical,
-            up_horizontal: horizontal_chars.up_horizontal,
-            down_horizontal: horizontal_chars.down_horizontal,
-            vertical_right: vertical_chars.vertical_right,
-            vertical_left: vertical_chars.vertical_left,
-            vertical_horizontal: vertical_horizontal_char,
-            down_right: corner_chars.down_right,
-            down_left: corner_chars.down_left,
-            up_right: corner_chars.up_right,
-            up_left: corner_chars.up_left,
-        }
-    }
-
+    /// Create a default table config struct
     fn default() -> Self {
         TableConfig {
+            seperate_cols: true,
+            seperate_rows: false,
+
             horizontal: '─',
             up_horizontal: '┴',
             down_horizontal: '┬',
@@ -119,25 +107,6 @@ impl TableConfig {
             vertical_horizontal: '┼',
         }
     }
-}
-
-struct TableHorizontalChars {
-    pub horizontal: char,
-    pub up_horizontal: char,
-    pub down_horizontal: char,
-}
-
-struct TableVerticalChars {
-    pub vertical: char,
-    pub vertical_right: char,
-    pub vertical_left: char,
-}
-
-struct TableCornerChars {
-    pub down_right: char,
-    pub down_left: char,
-    pub up_right: char,
-    pub up_left: char,
 }
 
 /// Gets the application config file and returns it as a Config struct. If path is none, gets the

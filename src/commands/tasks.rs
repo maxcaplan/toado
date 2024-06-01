@@ -300,8 +300,6 @@ pub fn search_tasks(
     } else {
         Ok(Some(formatting::format_task_list(
             tasks,
-            true,
-            false,
             args.verbose,
             &config.table,
         )))
@@ -325,8 +323,7 @@ pub fn list_tasks(
     let num_tasks = tasks.len();
 
     // Format tasks into a table string to display
-    let mut table_string =
-        formatting::format_task_list(tasks, true, false, args.verbose, &config.table);
+    let mut table_string = formatting::format_task_list(tasks, args.verbose, &config.table);
 
     // If not selecting all tasks, display number of tasks selected
     if !args.full {
@@ -447,7 +444,7 @@ fn prompt_task_selection(
     else {
         // Format matching tasks into vector of strings
         let task_strings: Vec<String> =
-            formatting::format_task_list(tasks.clone(), true, false, false, &config.table)
+            formatting::format_task_list(tasks.clone(), false, &config.table)
                 .split('\n')
                 .map(|line| line.to_string())
                 .collect();

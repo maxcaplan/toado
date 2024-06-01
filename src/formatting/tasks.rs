@@ -66,8 +66,6 @@ pub fn format_task(task: toado::Task, config: &config::Config) -> String {
 /// Format a vector of tasks as a string to be displayed to the user
 pub fn format_task_list(
     tasks: Vec<toado::Task>,
-    seperate_cols: bool,
-    seperate_rows: bool,
     verbose: bool,
     config: &config::TableConfig,
 ) -> String {
@@ -97,7 +95,7 @@ pub fn format_task_list(
     );
 
     table
-        .seperate_cols(seperate_cols)
-        .seperate_rows(seperate_rows)
+        .seperate_cols(config.seperate_cols)
+        .seperate_rows(config.seperate_rows)
         .to_string()
 }

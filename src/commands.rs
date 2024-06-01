@@ -183,10 +183,10 @@ fn prompt_select_item(
 
     let list_string = match &items {
         TasksOrProjects::Tasks(tasks) => {
-            formatting::format_task_list(tasks.clone(), true, false, false, &config.table)
+            formatting::format_task_list(tasks.clone(), false, &config.table)
         }
         TasksOrProjects::Projects(projects) => {
-            formatting::format_project_list(projects.clone(), true, false, false, &config.table)
+            formatting::format_project_list(projects.clone(), false, &config.table)
         }
     };
 

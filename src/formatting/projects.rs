@@ -8,8 +8,6 @@ use crate::{config, formatting::table::AsciiTable};
 /// Format a vector of projects as a string to be displayed to the user
 pub fn format_project_list(
     projects: Vec<toado::Project>,
-    seperate_cols: bool,
-    seperate_rows: bool,
     verbose: bool,
     config: &config::TableConfig,
 ) -> String {
@@ -39,7 +37,7 @@ pub fn format_project_list(
     );
 
     table
-        .seperate_cols(seperate_cols)
-        .seperate_rows(seperate_rows)
+        .seperate_cols(config.seperate_cols)
+        .seperate_rows(config.seperate_rows)
         .to_string()
 }

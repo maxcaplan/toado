@@ -1,6 +1,10 @@
+# Item table configuration
 [table]
-seperate_columns = true
-seperate_rows = true
+seperate_columns = true # Whether to put a seperating character between columns
+seperate_rows = false # Whether to put a seperating character between rows
+
+# Characters to use when formating item tables
+[table.characters]
 horizontal = "─"
 vertical = "│"
 up_horizontal = "┴"

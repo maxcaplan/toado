@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "toado"
-version = "0.11.4"
+version = "0.12.5"
 dependencies = [
  "clap",
  "console",
