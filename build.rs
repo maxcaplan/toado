@@ -11,7 +11,7 @@ fn main() {
     default_config_codegen(&out_dir);
 
     // Rebuild if build.rs changes
-    println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=build.rs");
 }
 
 /// Generates the function default_config in /config/default.rs
@@ -42,5 +42,5 @@ fn default_config_codegen(out_dir: &OsString) {
     .expect("should be able to write to file");
 
     // Rebuild if config.toml changes
-    println!("cargo::rerun-if-changed=config.toml");
+    println!("cargo:rerun-if-changed=config.toml");
 }
