@@ -232,10 +232,20 @@ fn handle_update(
 ///
 /// Will return an error if the task or project selection fails
 fn handle_ls(
-    args: flags::ListArgs,
+    mut args: flags::ListArgs,
     app: toado::Server,
     config: &config::Config,
 ) -> Result<Option<String>, toado::Error> {
+    // Set deafult verbose value
+    let mut verbose = config.list.default_verbose;
+    // Toggle if verbose flag true
+    if args.verbose {
+        verbose = !verbose;
+    }
+    // Set verbose arg
+    args.verbose = verbose;
+
+    // Execute command
     if args.task || !args.project {
         commands::list_tasks(args, app, config)
     } else {

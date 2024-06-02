@@ -10,6 +10,7 @@ include!(concat!(env!("OUT_DIR"), "/config/default.rs"));
 #[derive(Deserialize)]
 struct ConfigData {
     pub table: Option<TableData>,
+    pub list: Option<ListData>,
 }
 
 /// Table config data
@@ -20,7 +21,7 @@ struct TableData {
     pub characters: Option<TableCharsData>,
 }
 
-/// Table chars datas
+/// Table chars config data
 #[derive(Deserialize)]
 struct TableCharsData {
     pub horizontal: Option<char>,
@@ -36,10 +37,16 @@ struct TableCharsData {
     pub up_left: Option<char>,
 }
 
+/// List command config data
+#[derive(Deserialize)]
+struct ListData {
+    pub default_verbose: Option<bool>,
+}
+
 /// Application config
-#[derive(Debug)]
 pub struct Config {
     pub table: TableConfig,
+    pub list: ListConfig,
 }
 
 impl From<ConfigData> for Config {
@@ -47,30 +54,74 @@ impl From<ConfigData> for Config {
         let mut table = TableConfig::default();
 
         if let Some(table_data) = value.table {
-            table.seperate_cols = table_data.seperate_columns.unwrap_or(true);
-            table.seperate_rows = table_data.seperate_rows.unwrap_or(false);
+            if let Some(value) = table_data.seperate_columns {
+                table.seperate_cols = value;
+            }
+
+            if let Some(value) = table_data.seperate_rows {
+                table.seperate_rows = value;
+            }
 
             if let Some(table_chars) = table_data.characters {
-                table.horizontal = table_chars.horizontal.unwrap_or('─');
-                table.up_horizontal = table_chars.up_horizontal.unwrap_or('┴');
-                table.down_horizontal = table_chars.down_horizontal.unwrap_or('┬');
-                table.vertical = table_chars.vertical.unwrap_or('│');
-                table.vertical_right = table_chars.vertical_right.unwrap_or('├');
-                table.vertical_left = table_chars.vertical_left.unwrap_or('┤');
-                table.down_right = table_chars.down_right.unwrap_or('┌');
-                table.down_left = table_chars.down_left.unwrap_or('┐');
-                table.up_right = table_chars.up_right.unwrap_or('└');
-                table.up_left = table_chars.up_left.unwrap_or('┘');
-                table.vertical_horizontal = table_chars.vertical_horizontal.unwrap_or('┼');
+                if let Some(value) = table_chars.horizontal {
+                    table.horizontal = value
+                }
+
+                if let Some(value) = table_chars.up_horizontal {
+                    table.up_horizontal = value;
+                }
+
+                if let Some(value) = table_chars.down_horizontal {
+                    table.down_horizontal = value;
+                }
+
+                if let Some(value) = table_chars.vertical {
+                    table.vertical = value;
+                }
+
+                if let Some(value) = table_chars.vertical_right {
+                    table.vertical_right = value;
+                }
+
+                if let Some(value) = table_chars.vertical_left {
+                    table.vertical_left = value;
+                }
+
+                if let Some(value) = table_chars.down_right {
+                    table.down_right = value;
+                }
+
+                if let Some(value) = table_chars.down_left {
+                    table.down_left = value;
+                }
+
+                if let Some(value) = table_chars.up_right {
+                    table.up_right = value;
+                }
+
+                if let Some(value) = table_chars.up_left {
+                    table.up_left = value;
+                }
+
+                if let Some(value) = table_chars.vertical_horizontal {
+                    table.vertical_horizontal = value;
+                }
             }
         }
 
-        Self { table }
+        let mut list = ListConfig::default();
+
+        if let Some(list_data) = value.list {
+            if let Some(value) = list_data.default_verbose {
+                list.default_verbose = value;
+            }
+        }
+
+        Self { table, list }
     }
 }
 
 /// Application Table config
-#[derive(Debug)]
 pub struct TableConfig {
     pub seperate_cols: bool,
     pub seperate_rows: bool,
@@ -105,6 +156,20 @@ impl TableConfig {
             up_right: '└',
             up_left: '┘',
             vertical_horizontal: '┼',
+        }
+    }
+}
+
+/// List command config
+#[derive(Deserialize)]
+pub struct ListConfig {
+    pub default_verbose: bool,
+}
+
+impl ListConfig {
+    pub fn default() -> Self {
+        Self {
+            default_verbose: false,
         }
     }
 }

@@ -1,9 +1,9 @@
 # Item table configuration
 [table]
-seperate_columns = true # Whether to put a seperating character between columns
-seperate_rows = false # Whether to put a seperating character between rows
+seperate_columns = true # Enables seperating character between columns
+seperate_rows = false # Enables seperating character between rows
 
-# Characters to use when formating item tables
+# Item table formatting characters
 [table.characters]
 horizontal = "─"
 vertical = "│"
@@ -16,3 +16,7 @@ down_right = "┌"
 down_left = "┐"
 up_right = "└"
 up_left = "┘"
+
+# List command config
+[list]
+default_verbose = false # Enables verbose output by default
