@@ -1,4 +1,4 @@
-use crate::formatting::table::AsciiTable;
+use crate::{config, formatting::table::AsciiTable};
 
 /// Format a single project as a string to be displayed to the user
 // pub fn format_project(_project: toado::Project) -> String {
@@ -8,12 +8,11 @@ use crate::formatting::table::AsciiTable;
 /// Format a vector of projects as a string to be displayed to the user
 pub fn format_project_list(
     projects: Vec<toado::Project>,
-    seperate_cols: bool,
-    seperate_rows: bool,
     verbose: bool,
+    config: &config::TableConfig,
 ) -> String {
     // Create table from project vector
-    let table = AsciiTable::from(
+    let table = AsciiTable::new(
         projects
             .into_iter()
             .map(|project| {
@@ -34,10 +33,11 @@ pub fn format_project_list(
                 cols
             })
             .collect::<Vec<Vec<String>>>(),
+        config,
     );
 
     table
-        .seperate_cols(seperate_cols)
-        .seperate_rows(seperate_rows)
+        .seperate_cols(config.seperate_cols)
+        .seperate_rows(config.seperate_rows)
         .to_string()
 }

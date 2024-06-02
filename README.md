@@ -77,6 +77,36 @@ Options:
   -V, --version          Print version
 ```  
 
+# Configuration
+
+Toado's look and behaviour can be configured TOML config file as follows:
+
+```TOML
+# config.toml
+[table]
+horizontal = "-"
+vertical = "|"
+```
+
+Config files can be passed as cli arguments as follows:
+
+```bash
+$ toado -c path/to/config.toml
+```
+
+If no config file is supplied, toado will look for a config file at `~/.config/toado/config.toml`
+
+To generate a default config file, run the following commands:
+
+```bash
+$ rm ~/.config/toado/config.toml
+$ toado
+```
+
+This will generate a config file at `~/.config/toado/config.toml`
+
+You can also view the defualt config file [here](config.toml) 
+
 # Building
 
 To build the project, you must have [Rust](https://www.rust-lang.org/) version 1.77.2 or later.

@@ -19,8 +19,11 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
     /// Path to database file
-    #[arg(short, long)]
+    #[arg(short, long, value_name = "PATH")]
     pub file: Option<String>,
+    /// Path to config file
+    #[arg(short, long, value_name = "PATH")]
+    pub config: Option<String>,
 }
 
 /// Application subcommands

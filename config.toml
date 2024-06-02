@@ -1,0 +1,22 @@
+# Item table configuration
+[table]
+seperate_columns = true # Enables seperating character between columns
+seperate_rows = false # Enables seperating character between rows
+
+# Item table formatting characters
+[table.characters]
+horizontal = "─"
+vertical = "│"
+up_horizontal = "┴"
+down_horizontal = "┬"
+vertical_right = "├"
+vertical_left = "┤"
+vertical_horizontal = "┼"
+down_right = "┌"
+down_left = "┐"
+up_right = "└"
+up_left = "┘"
+
+# List command config
+[list]
+default_verbose = false # Enables verbose output by default

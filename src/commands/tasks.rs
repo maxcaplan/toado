@@ -1,3 +1,5 @@
+use crate::config;
+
 use super::*;
 
 /// Creates a new task in a toado server with provided arguments. Prompts the user to input any task
@@ -85,6 +87,7 @@ pub fn create_task(
 pub fn delete_task(
     args: flags::DeleteArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Option<i64>, toado::Error> {
     let theme = dialoguer::theme::ColorfulTheme::default();
 
@@ -98,6 +101,7 @@ pub fn delete_task(
         search_term,
         toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
         &theme,
+        config,
     )?;
 
     // Get selected task id
@@ -126,7 +130,11 @@ pub fn delete_task(
 /// # Errors
 ///
 /// Will return an error if user input fails, if task updating fails, or if no task is updated
-pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, toado::Error> {
+pub fn update_task(
+    args: flags::UpdateArgs,
+    app: toado::Server,
+    config: &config::Config,
+) -> Result<u64, toado::Error> {
     let theme = dialoguer::theme::ColorfulTheme::default();
 
     let search_term = option_or_input(
@@ -139,6 +147,7 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
         search_term,
         toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
         &theme,
+        config,
     )?;
 
     // Get selected task id
@@ -260,6 +269,7 @@ pub fn update_task(args: flags::UpdateArgs, app: toado::Server) -> Result<u64, t
 pub fn search_tasks(
     args: flags::SearchArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Option<String>, toado::Error> {
     let condition = match args.term.parse::<usize>() {
         // If search term is number, select by id
@@ -286,13 +296,12 @@ pub fn search_tasks(
     if tasks.is_empty() {
         Ok(None)
     } else if tasks.len() == 1 {
-        Ok(Some(formatting::format_task(tasks[0].clone())))
+        Ok(Some(formatting::format_task(tasks[0].clone(), config)))
     } else {
         Ok(Some(formatting::format_task_list(
             tasks,
-            true,
-            false,
             args.verbose,
+            &config.table,
         )))
     }
 }
@@ -305,6 +314,7 @@ pub fn search_tasks(
 pub fn list_tasks(
     args: flags::ListArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<Option<String>, toado::Error> {
     let (cols, order_by, order_dir, limit, offset) = parse_list_args(&args);
 
@@ -313,7 +323,7 @@ pub fn list_tasks(
     let num_tasks = tasks.len();
 
     // Format tasks into a table string to display
-    let mut table_string = formatting::format_task_list(tasks, true, false, args.verbose);
+    let mut table_string = formatting::format_task_list(tasks, args.verbose, &config.table);
 
     // If not selecting all tasks, display number of tasks selected
     if !args.full {
@@ -330,6 +340,7 @@ pub fn list_tasks(
 pub fn check_task(
     args: flags::CheckArgs,
     app: toado::Server,
+    config: &config::Config,
 ) -> Result<(String, toado::ItemStatus), toado::Error> {
     let theme = dialoguer::theme::ColorfulTheme::default();
 
@@ -343,6 +354,7 @@ pub fn check_task(
         search_term,
         toado::QueryCols::Some(vec!["id", "name", "priority", "status"]),
         &theme,
+        config,
     )?;
 
     // Get selected task id
@@ -394,6 +406,7 @@ fn prompt_task_selection(
     search_term: String,
     cols: toado::QueryCols,
     theme: &dyn dialoguer::theme::Theme,
+    config: &config::Config,
 ) -> Result<toado::Task, toado::Error> {
     let select_condition = match search_term.parse::<usize>() {
         // If search term is number, select by id
@@ -431,7 +444,7 @@ fn prompt_task_selection(
     else {
         // Format matching tasks into vector of strings
         let task_strings: Vec<String> =
-            formatting::format_task_list(tasks.clone(), true, false, false)
+            formatting::format_task_list(tasks.clone(), false, &config.table)
                 .split('\n')
                 .map(|line| line.to_string())
                 .collect();
